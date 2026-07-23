@@ -362,4 +362,122 @@ cli.command('scout', {
   },
 })
 
+cli.command('study', {
+  description:
+    'How a past season was won: position splits, draft ROI by round, waiver gold',
+  options: z.object({
+    league: z
+      .string()
+      .optional()
+      .describe('League ID to study (default: previous season of current league)'),
+  }),
+  async run({ options }) {
+    const cur = await api(`/league/${LEAGUE_ID}`)
+    const id = options.league ?? cur.previous_league_id
+    if (!id) throw new Error('no previous league to study')
+    const [lg, users, rosters, drafts, db] = await Promise.all([
+      api(`/league/${id}`),
+      leagueUsers(id),
+      api<any[]>(`/league/${id}/rosters`),
+      api<any[]>(`/league/${id}/drafts`),
+      players(),
+    ])
+    const picks: any[] = drafts[0]
+      ? await api(`/draft/${drafts[0].draft_id}/picks`)
+      : []
+    const weeks = await Promise.all(
+      Array.from({ length: 17 }, (_, i) =>
+        api<any[]>(`/league/${id}/matchups/${i + 1}`).catch(() => []),
+      ),
+    )
+    // points every rostered player actually scored for each team, all season
+    const teamPts: Record<number, Record<string, number>> = {}
+    for (const m of weeks.flat()) {
+      const t = (teamPts[m.roster_id] ??= {})
+      for (const [pid, pts] of Object.entries(m.players_points ?? {}))
+        t[pid] = (t[pid] ?? 0) + (pts as number)
+    }
+    const draftedBy: Record<string, { round: number; roster_id: number }> = {}
+    for (const p of picks)
+      draftedBy[p.player_id] = { round: p.round, roster_id: p.roster_id }
+
+    const ownerOf = Object.fromEntries(
+      rosters.map((r) => [
+        r.roster_id,
+        users[r.owner_id]?.display_name ?? String(r.owner_id),
+      ]),
+    )
+    const teams = rosters
+      .map((r) => {
+        const pts = teamPts[r.roster_id] ?? {}
+        let total = 0
+        let fromDraft = 0
+        const byPos: Record<string, number> = {}
+        for (const [pid, v] of Object.entries(pts)) {
+          total += v
+          if (draftedBy[pid]?.roster_id === r.roster_id) fromDraft += v
+          const pos = db[pid]?.position ?? '?'
+          byPos[pos] = (byPos[pos] ?? 0) + v
+        }
+        const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0)
+        const s = r.settings ?? {}
+        return {
+          owner: ownerOf[r.roster_id],
+          record: `${s.wins ?? 0}-${s.losses ?? 0}`,
+          pts: Math.round(total),
+          own_draft_pct: pct(fromDraft),
+          qb: pct(byPos.QB ?? 0),
+          rb: pct(byPos.RB ?? 0),
+          wr: pct(byPos.WR ?? 0),
+          te: pct(byPos.TE ?? 0),
+          k_def: pct((byPos.K ?? 0) + (byPos.DEF ?? 0)),
+        }
+      })
+      .sort((a, b) => b.pts - a.pts)
+
+    // ROI: points each pick produced for the team that drafted it
+    const roundAcc: Record<number, { sum: number; n: number; best: string; bestPts: number }> = {}
+    for (const p of picks) {
+      const got = Math.round(teamPts[p.roster_id]?.[p.player_id] ?? 0)
+      const acc = (roundAcc[p.round] ??= { sum: 0, n: 0, best: '', bestPts: -1 })
+      acc.sum += got
+      acc.n++
+      if (got > acc.bestPts) {
+        acc.bestPts = got
+        acc.best = `${p.metadata?.first_name} ${p.metadata?.last_name} (${got})`
+      }
+    }
+    const round_roi = Object.entries(roundAcc).map(([round, a]) => ({
+      round: Number(round),
+      avg_pts: Math.round(a.sum / a.n),
+      best: a.best,
+    }))
+
+    // waiver gold: points scored by players nobody drafted
+    const undrafted: Record<string, number> = {}
+    for (const t of Object.values(teamPts))
+      for (const [pid, v] of Object.entries(t))
+        if (!draftedBy[pid]) undrafted[pid] = (undrafted[pid] ?? 0) + v
+    const waiver_gold = Object.entries(undrafted)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([pid, v]) => ({
+        player: playerName(db[pid]),
+        pos: db[pid]?.position,
+        pts: Math.round(v),
+      }))
+
+    return {
+      league: lg.name,
+      season: lg.season,
+      scoring_same_as_current:
+        JSON.stringify(lg.scoring_settings) ===
+        JSON.stringify(cur.scoring_settings),
+      teams,
+      round_roi,
+      waiver_gold,
+    }
+  },
+})
+
 cli.serve()
