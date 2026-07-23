@@ -9,6 +9,8 @@ import {
   USER_ID,
   USERNAME,
 } from './sleeper'
+import { valueBoard } from './value'
+import { crawl, study } from './meta'
 
 const FANTASY_POS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
 
@@ -477,6 +479,45 @@ cli.command('study', {
       round_roi,
       waiver_gold,
     }
+  },
+})
+
+cli.command('value', {
+  description:
+    'Positional baselines + VORP under OUR scoring, from re-scored real seasons',
+  args: z.object({
+    season: z.string().optional().describe('Season to score (default 2025)'),
+  }),
+  options: z.object({
+    top: z.coerce.number().optional().describe('How many VORP rows (default 30)'),
+  }),
+  async run({ args, options }) {
+    const { baselines, vorp } = await valueBoard(args.season ?? '2025')
+    return {
+      season: args.season ?? '2025',
+      baselines,
+      top_vorp: vorp.slice(0, options.top ?? 30),
+    }
+  },
+})
+
+cli.command('meta', {
+  description:
+    'The greater corpus: crawl similar Sleeper leagues, then study how they were won',
+  args: z.object({
+    action: z.enum(['crawl', 'study']).describe('crawl: harvest league IDs; study: aggregate'),
+  }),
+  options: z.object({
+    season: z.string().optional().describe('Season (default 2025)'),
+    hops: z.coerce.number().optional().describe('crawl: snowball hops (default 3)'),
+    target: z.coerce.number().optional().describe('crawl: stop at N similar leagues (default 300)'),
+    sample: z.coerce.number().optional().describe('study: max leagues to study (default 200)'),
+  }),
+  async run({ args, options }) {
+    const season = options.season ?? '2025'
+    if (args.action === 'crawl')
+      return crawl(season, options.hops ?? 3, options.target ?? 300)
+    return study(season, options.sample ?? 200)
   },
 })
 
