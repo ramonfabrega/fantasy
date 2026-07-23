@@ -1,0 +1,20 @@
+{
+  "name": "fantasy",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "ff": "bun src/ff.ts"
+  },
+  "bin": {
+    "ff": "./src/ff.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "incur": "^0.4.19"
+  }
+}
