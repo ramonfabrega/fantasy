@@ -10,7 +10,8 @@ import {
   USERNAME,
 } from './sleeper'
 import { valueBoard } from './value'
-import { crawl, study } from './meta'
+import { buildAdp, crawl, study } from './meta'
+import { profileLeague } from './profile'
 import { oddsBoard } from './odds'
 
 const FANTASY_POS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
@@ -525,7 +526,9 @@ cli.command('meta', {
   description:
     'The greater corpus: crawl similar Sleeper leagues, then study how they were won',
   args: z.object({
-    action: z.enum(['crawl', 'study']).describe('crawl: harvest league IDs; study: aggregate'),
+    action: z
+      .enum(['crawl', 'study', 'adp'])
+      .describe('crawl: harvest league IDs; study: aggregate; adp: build corpus ADP'),
   }),
   options: z.object({
     season: z.string().optional().describe('Season (default 2025)'),
@@ -537,7 +540,31 @@ cli.command('meta', {
     const season = options.season ?? '2025'
     if (args.action === 'crawl')
       return crawl(season, options.hops ?? 3, options.target ?? 300)
+    if (args.action === 'adp') return buildAdp(season, options.sample ?? 300)
     return study(season, options.sample ?? 200)
+  },
+})
+
+cli.command('profile', {
+  description:
+    'Opponent profiles vs corpus ADP: reach habits, draft skill, timing, biases',
+  args: z.object({
+    owner: z.string().optional().describe('Owner display name for pick-by-pick detail'),
+  }),
+  options: z.object({
+    season: z.string().optional().describe('Season (default 2025)'),
+  }),
+  async run({ args, options }) {
+    const profiles = await profileLeague(options.season ?? '2025')
+    if (args.owner) {
+      const q = args.owner.toLowerCase()
+      const pr = profiles.find((p) => p.owner.toLowerCase().includes(q))
+      if (!pr) throw new Error(`no owner matching "${args.owner}"`)
+      return pr
+    }
+    return profiles
+      .map(({ picks, ...summary }) => summary)
+      .sort((a, b) => (b.winpct ?? 0) - (a.winpct ?? 0))
   },
 })
 

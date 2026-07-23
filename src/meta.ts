@@ -99,6 +99,63 @@ export async function crawl(season: string, hops: number, target: number) {
   }
 }
 
+// Empirical ADP from corpus drafts: avg pick_no per player across real
+// drafts in OUR format, plus avg points delivered per round (expectation
+// baseline for judging draft skill).
+export async function buildAdp(season: string, sample: number) {
+  const file = crawlFile(season)
+  if (!(await file.exists())) throw new Error(`run "ff meta crawl" first`)
+  const { similar } = await file.json()
+  const ids = Object.keys(similar).slice(0, sample)
+
+  const [league, stats] = await Promise.all([
+    api(`/league/${LEAGUE_ID}`),
+    seasonStats(season),
+  ])
+  const ptsById: Record<string, number> = {}
+  for (const [pid, st] of Object.entries(stats))
+    ptsById[pid] = scoreStats(st, league.scoring_settings)
+
+  console.error(`building ADP from up to ${ids.length} drafts…`)
+  const results = await pmap(ids, 4, async (id) => {
+    const drafts = await api<any[]>(`/league/${id}/drafts`)
+    const draft = drafts?.[0]
+    if (!draft || draft.type !== 'snake' || draft.status !== 'complete') return null
+    return api<any[]>(`/draft/${draft.draft_id}/picks`)
+  })
+  const adpAcc: Record<string, { sum: number; n: number }> = {}
+  const roundAcc: Record<number, { sum: number; n: number }> = {}
+  let drafts = 0
+  for (const picks of results) {
+    if (!picks) continue
+    drafts++
+    for (const p of picks) {
+      const a = (adpAcc[p.player_id] ??= { sum: 0, n: 0 })
+      a.sum += p.pick_no
+      a.n++
+      const r = (roundAcc[p.round] ??= { sum: 0, n: 0 })
+      r.sum += ptsById[p.player_id] ?? 0
+      r.n++
+    }
+  }
+  const adp: Record<string, { adp: number; n: number }> = {}
+  for (const [pid, a] of Object.entries(adpAcc))
+    if (a.n >= 10)
+      adp[pid] = { adp: Math.round((a.sum / a.n) * 10) / 10, n: a.n }
+  const round_avg_pts = Object.fromEntries(
+    Object.entries(roundAcc).map(([r, a]) => [r, Math.round(a.sum / a.n)]),
+  )
+  const out = { season, drafts_sampled: drafts, players: Object.keys(adp).length, adp, round_avg_pts }
+  await Bun.write(Bun.file(join(META_DIR, `adp-${season}.json`)), JSON.stringify(out))
+  return { season, drafts_sampled: drafts, players_with_adp: Object.keys(adp).length }
+}
+
+export async function loadAdp(season: string) {
+  const file = Bun.file(join(META_DIR, `adp-${season}.json`))
+  if (!(await file.exists())) throw new Error(`run "ff meta adp" first`)
+  return file.json()
+}
+
 export async function study(season: string, sample: number) {
   const file = crawlFile(season)
   if (!(await file.exists())) throw new Error(`run "ff meta crawl" first`)
