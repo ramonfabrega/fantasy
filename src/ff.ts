@@ -11,6 +11,7 @@ import {
 } from './sleeper'
 import { valueBoard } from './value'
 import { crawl, study } from './meta'
+import { oddsBoard } from './odds'
 
 const FANTASY_POS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
 
@@ -498,6 +499,25 @@ cli.command('value', {
       baselines,
       top_vorp: vorp.slice(0, options.top ?? 30),
     }
+  },
+})
+
+cli.command('odds', {
+  description:
+    'Vegas consensus: spreads, totals, implied team totals (the-odds-api, cached 6h)',
+  options: z.object({
+    fresh: z.boolean().optional().describe('Bypass cache (costs 2 API credits)'),
+    team: z.string().optional().describe('Filter to games involving a team abbr'),
+    max: z.coerce.number().optional().describe('Max games (default 20)'),
+  }),
+  async run({ options }) {
+    const { quota_remaining, games } = await oddsBoard(options.fresh ?? false)
+    let out = games as any[]
+    if (options.team) {
+      const t = options.team.toUpperCase()
+      out = out.filter((g) => g.game.includes(t))
+    }
+    return { quota_remaining, games: out.slice(0, options.max ?? 20) }
   },
 })
 

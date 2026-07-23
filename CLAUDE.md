@@ -42,9 +42,17 @@ Player DB (~5MB) caches to `.cache/players.json` for 24h — Sleeper asks max 1 
 ## Roadmap
 
 1. ✅ Sleeper read layer (`ff`)
-2. Draft-date poller (start_time is null until commish schedules) + opponent profiles
-3. Data feeds: odds API (needs key from Ramon), consensus projections, ADP
-4. VORP/tier engine tuned to our scoring → draft board (must be glanceable in <30s)
-5. Live draft assistant (poll `ff picks`, recompute best-available by tier)
-6. In-season loop: waiver evaluator + FAAB sizing, start/sit, Sunday inactives seatbelt
-7. Write automation (FA sniping, lineup fixes) after trust ramp
+2. ✅ History mining (`ff scout`, `ff study`) + greater corpus (`ff meta crawl/study`,
+   1,886 similar leagues harvested; findings in memory `league-meta-2025.md`)
+3. ✅ Value engine (`ff value`) — real seasons re-scored under our rules; weekly
+   stats endpoints only (season-total endpoint is broken; two-Josh-Allens ID hazard)
+4. ✅ Vegas layer (`ff odds`) — the-odds-api key lives in `.env` (gitignored,
+   free tier 500 credits/mo, calls cost 2, cached 6h; ask Ramon if lost)
+5. Projections/ADP feeds (Sleeper `/projections/nfl/...` + FantasyPros) as draft nears
+6. VORP/tier engine → draft board (must be glanceable in <30s picks)
+7. Live draft assistant (poll `ff picks`, recompute best-available by tier)
+8. In-season loop: waiver evaluator + FAAB sizing, start/sit, Sunday inactives seatbelt
+9. Write automation (FA sniping, lineup fixes) after trust ramp
+
+A session cron (twice daily) watches for draft scheduling + Ramon's roster
+assignment; re-arm it if the session restarts (7-day expiry).
