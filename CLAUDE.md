@@ -36,8 +36,15 @@ Prefer Bun natives (`Bun.file`, `bun:sqlite`, `Bun.serve`) over npm equivalents.
 
 `bun ff <cmd>` (or `bun src/ff.ts <cmd>`): `state`, `league`, `members`, `roster
 [owner]`, `draft`, `picks`, `trending [add|drop]`, `player <query>`, `matchups
-[week]`, `scout [--league id]`. All read-only against `api.sleeper.app/v1` (no auth).
-Player DB (~5MB) caches to `.cache/players.json` for 24h — Sleeper asks max 1 fetch/day.
+[week]`, `scout [--league id]`, `study`, `value`, `odds`, `meta crawl|study`,
+`profile`. All read-only. Sleeper (`api.sleeper.app/v1`) needs no auth; only
+`odds` needs a key. Player DB (~5MB) caches to `.cache/players.json` for 24h —
+Sleeper asks max 1 fetch/day; odds cache 6h.
+
+League identity is env-configurable (`FF_LEAGUE_ID`, `FF_USER_ID`, `FF_USERNAME`
+in `src/sleeper.ts`, defaulting to ours) so the repo works as a base for someone
+else's league — see `.env.example` and README. Keep it that way: no new hardcoded
+league IDs.
 
 ## Roadmap
 
