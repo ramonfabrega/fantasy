@@ -11,8 +11,9 @@ an env var — point it at your own league and everything works.
 
 ```sh
 bun install
+bun ff --llms        # command manifest, generated — the best orientation for an agent
 bun ff league        # your league's rules, decoded
-bun ff --help        # every command
+bun ff --help        # same, for humans
 ```
 
 That's it. The Sleeper API is public and unauthenticated, so the Sleeper commands

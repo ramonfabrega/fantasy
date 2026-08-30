@@ -5,6 +5,19 @@ Team = Ramon + Claude. We know nothing about the NFL and don't care; we win via
 tooling, freshness, and zero mistakes. The league is 11 sweaty IRL friends whose
 idea of fun is beating us.
 
+> **New agent in a fresh clone, start here.** Run `bun ff --llms` — the command
+> manifest is generated from the command definitions, so it is the one description
+> of this CLI that cannot go stale. Then `bun ff league` for the live rules.
+> Nothing needs auth except `ff odds`.
+>
+> **If this is a fork, not Ramon's checkout:** everything below is *our* team's
+> doctrine and league — rewrite it as yours. Set `FF_LEAGUE_ID`, `FF_USER_ID`, and
+> `FF_USERNAME` in `.env` (see `.env.example`) and every command retargets. The
+> `.md` files referenced in session memory below (`sleeper-league.md`,
+> `league-meta-2025.md`, `opponent-book.md`) are **not in this repo** — they live in
+> Ramon's Claude session memory. Don't go looking for them; regenerate the
+> equivalents for your own league with `ff scout`, `ff study`, and `ff profile`.
+
 ## Doctrine
 
 - **Market-takers, not market-makers.** Vegas lines + consensus projections are the
