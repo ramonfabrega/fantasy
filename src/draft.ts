@@ -126,6 +126,7 @@ export function serveLive(season: string, port: number, everyMs: number) {
   setInterval(tick, everyMs)
   const server = Bun.serve({
     port,
+    hostname: "0.0.0.0", // reachable over the tailnet too (e.g. studio:4242), not just localhost
     fetch(req) {
       const url = new URL(req.url)
       if (url.pathname === '/data')
@@ -133,7 +134,7 @@ export function serveLive(season: string, port: number, everyMs: number) {
       return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } })
     },
   })
-  return server.url.toString()
+  return `http://localhost:${server.port}/  (bound 0.0.0.0 — also any tailnet name for this host, e.g. http://studio:${server.port}/)`
 }
 
 const PAGE = /* html */ `<!doctype html><meta charset="utf-8"><title>ff live</title>
