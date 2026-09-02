@@ -81,7 +81,10 @@ league IDs.
    sits beside the Sleeper draft room. Draft-day flow: Ramon clicks in sleeper.com,
    Claude calls every pick from this board.
 8. In-season loop: waiver evaluator + FAAB sizing, start/sit, Sunday inactives seatbelt
-9. Write automation (FA sniping, lineup fixes) after trust ramp
+9. Write automation (FA sniping, lineup fixes) after trust ramp. Realtime findings
+   (2026-09-02): Sleeper is Phoenix; data socket `wss://gateway.sleeper.com/socket/websocket`
+   needs the app session token (`token=` query param), topics `draft:<id>`, `league:<id>`,
+   `user:<id>`, `score:nfl`. No anonymous stream — the 1s REST poll in `ff live` is the feed.
 
 A session cron (twice daily) watches for draft scheduling + Ramon's roster
 assignment; re-arm it if the session restarts (7-day expiry).
