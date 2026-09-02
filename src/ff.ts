@@ -13,6 +13,9 @@ import { valueBoard } from './value'
 import { buildAdp, crawl, study } from './meta'
 import { profileLeague } from './profile'
 import { oddsBoard } from './odds'
+import { buildBoard, flag } from './proj'
+import { draftState, serveLive } from './draft'
+import { mockDraft } from './mock'
 
 const FANTASY_POS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
 
@@ -565,6 +568,80 @@ cli.command('profile', {
     return profiles
       .map(({ picks, ...summary }) => summary)
       .sort((a, b) => (b.winpct ?? 0) - (a.winpct ?? 0))
+  },
+})
+
+cli.command('board', {
+  description:
+    'Draft board: Sleeper season projections re-scored under OUR rules → VORP, tiers, ADP edge, flags',
+  options: z.object({
+    pos: z.string().optional().describe('Filter to a position (RB/WR/TE/QB/K/DEF)'),
+    top: z.coerce.number().optional().describe('Rows (default 60)'),
+    season: z.string().optional().describe('Season (default: current)'),
+    fresh: z.boolean().optional().describe('Bypass the 1h projection cache'),
+    available: z.boolean().optional().describe('Hide players already drafted in our draft'),
+  }),
+  async run({ options }) {
+    const season = options.season ?? (await api('/state/nfl')).season
+    let rows = await buildBoard(season, options.fresh ?? false)
+    if (options.available) {
+      const l = await api(`/league/${LEAGUE_ID}`)
+      const picks = await api<any[]>(`/draft/${l.draft_id}/picks`)
+      const taken = new Set(picks.map((p) => p.player_id))
+      rows = rows.filter((r) => !taken.has(r.id))
+    }
+    if (options.pos) {
+      const p = options.pos.toUpperCase()
+      rows = rows.filter((r) => r.pos === p)
+    }
+    return rows.slice(0, options.top ?? 60).map((r) => ({
+      rk: r.ovr_rank,
+      player: r.player,
+      pos: `${r.pos}${r.pos_rank}`,
+      team: r.team,
+      t: r.tier,
+      pts: Math.round(r.pts),
+      vorp: r.vorp,
+      val: r.val,
+      adp: r.adp,
+      edge: r.edge,
+      last: r.last,
+      flag: flag(r),
+    }))
+  },
+})
+
+cli.command('live', {
+  description:
+    'Live draft assistant: on-the-clock state, our roster, best available for OUR next pick (poll or --serve)',
+  options: z.object({
+    serve: z.coerce.number().optional().describe('Serve an auto-refreshing page on this port (e.g. 4242)'),
+    every: z.coerce.number().optional().describe('Poll interval seconds (default 3)'),
+    season: z.string().optional().describe('Season (default: current)'),
+  }),
+  async run({ options }) {
+    const season = options.season ?? (await api('/state/nfl')).season
+    const everyMs = (options.every ?? 3) * 1000
+    if (options.serve) {
+      const url = serveLive(season, options.serve, everyMs)
+      console.error(`ff live → ${url}  (polling Sleeper every ${everyMs / 1000}s)`)
+      await new Promise(() => {})
+    }
+    return draftState(season)
+  },
+})
+
+cli.command('mock', {
+  description:
+    'Simulate the rest of the draft N times (opponents off ADP, us off the board) → pick plan with availability odds',
+  options: z.object({
+    sims: z.coerce.number().optional().describe('Simulations (default 300)'),
+    season: z.string().optional().describe('Season (default: current)'),
+    fresh: z.boolean().optional().describe('Bypass the 1h projection cache'),
+  }),
+  async run({ options }) {
+    const season = options.season ?? (await api('/state/nfl')).season
+    return mockDraft(season, options.sims ?? 300, options.fresh ?? false)
   },
 })
 
