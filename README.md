@@ -62,6 +62,13 @@ credits/mo; a spreads+totals call costs 2 and is cached 6h).
 | `ff odds` | Vegas consensus: spreads, totals, implied team totals |
 | `ff meta crawl\|study` | harvest similar leagues, then study how they were won |
 
+**Draft day**
+| | |
+| --- | --- |
+| `ff board [--pos RB] [--available]` | Sleeper season projections re-scored under *your* rules → flex-aware VORP, tiers, ADP edge, injury/rookie/regression flags |
+| `ff mock [--sims 300]` | play the rest of the draft N times (opponents off ADP, you off the board) → pick plan with availability odds per pick |
+| `ff live [--serve 4242]` | on-the-clock state, your roster, best available for *your* next pick; `--serve` renders an auto-refreshing page to sit beside the Sleeper draft room |
+
 Every command takes `--json` / `--format yaml\|md\|jsonl` for machines, and
 `ff --mcp` serves the whole CLI as an MCP server.
 

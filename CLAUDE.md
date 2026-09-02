@@ -50,7 +50,7 @@ Prefer Bun natives (`Bun.file`, `bun:sqlite`, `Bun.serve`) over npm equivalents.
 `bun ff <cmd>` (or `bun src/ff.ts <cmd>`): `state`, `league`, `members`, `roster
 [owner]`, `draft`, `picks`, `trending [add|drop]`, `player <query>`, `matchups
 [week]`, `scout [--league id]`, `study`, `value`, `odds`, `meta crawl|study`,
-`profile`. All read-only. Sleeper (`api.sleeper.app/v1`) needs no auth; only
+`profile`, `board`, `mock`, `live [--serve port]`. All read-only. Sleeper (`api.sleeper.app/v1`) needs no auth; only
 `odds` needs a key. Player DB (~5MB) caches to `.cache/players.json` for 24h —
 Sleeper asks max 1 fetch/day; odds cache 6h.
 
@@ -68,9 +68,18 @@ league IDs.
    stats endpoints only (season-total endpoint is broken; two-Josh-Allens ID hazard)
 4. ✅ Vegas layer (`ff odds`) — the-odds-api key lives in `.env` (gitignored,
    free tier 500 credits/mo, calls cost 2, cached 6h; ask Ramon if lost)
-5. Projections/ADP feeds (Sleeper `/projections/nfl/...` + FantasyPros) as draft nears
-6. VORP/tier engine → draft board (must be glanceable in <30s picks)
-7. Live draft assistant (poll `ff picks`, recompute best-available by tier)
+5. ✅ Projections/ADP feed (`src/proj.ts`) — Sleeper `api.sleeper.com/projections/nfl/<season>`
+   (rotowire, unauth, ~daily refresh, cached 1h): per-stat season projections re-scored
+   under our rules + `adp_half_ppr` (what opponents see in their draft room) + injury
+   status. DEF rows are stubs → use the published total. FantasyPros not needed.
+6. ✅ Board (`ff board`) — value = max(starter VORP with the 12 flex slots allocated
+   jointly across RB/WR/TE, half-weighted bench value over the draft-end baseline);
+   gap-based tiers; recommender applies doctrine as need multipliers (late QB, one
+   TE, K/DEF only in the last two rounds, flagged players discounted not hidden).
+7. ✅ Live draft assistant (`ff live [--serve port]`) + planner (`ff mock`): polls picks,
+   recomputes best-available for OUR next pick with gone-by-then odds; the served page
+   sits beside the Sleeper draft room. Draft-day flow: Ramon clicks in sleeper.com,
+   Claude calls every pick from this board.
 8. In-season loop: waiver evaluator + FAAB sizing, start/sit, Sunday inactives seatbelt
 9. Write automation (FA sniping, lineup fixes) after trust ramp
 
