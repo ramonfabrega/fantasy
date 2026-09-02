@@ -52,13 +52,13 @@ export async function draftState(season: string, fresh = false, draftId?: string
   const onClockSlot = done ? 0 : slotForPick(current, teams)
   const ourPicks = picksForSlot(slot, teams, rounds)
   const nextOurs = ourPicks.filter((n) => n >= current)
-  const ours = picks
-    .filter((p) => p.draft_slot === slot)
-    .map((p) => pickRow(p, byId.get(p.player_id)))
+  const ourPickRows = picks.filter((p) => p.draft_slot === slot)
+  const ours = ourPickRows.map((p) => pickRow(p, byId.get(p.player_id)))
+  const oursRows = ourPickRows.map((p) => byId.get(p.player_id)).filter((r): r is ProjRow => !!r)
   const owned = countPos(ours)
   const available = board.filter((r) => !taken.has(r.id))
   const at = nextOurs[0] ?? current
-  const recs = recommend(available, owned, at, nextOurs[1] ?? null, teams, rounds)
+  const recs = recommend(available, oursRows, at, nextOurs[1] ?? null, teams, rounds)
   const byPos: Record<string, ReturnType<typeof recRow>[]> = {}
   for (const pos of ['RB', 'WR', 'TE', 'QB', 'K', 'DEF']) {
     byPos[pos] = recs
@@ -114,6 +114,7 @@ function recRow(r: Rec) {
     pts: Math.round(r.pts),
     vorp: r.vorp,
     val: r.val,
+    gain: r.gain,
     rec: r.rec,
     adp: r.adp,
     gone: r.gone,
@@ -134,8 +135,26 @@ export function serveLive(season: string, port: number, everyMs: number, draftId
   let lastErr = ''
   const clients = new Set<ReadableStreamDefaultController>()
   const payload = () => `data: ${JSON.stringify({ state: last, error: lastErr })}\n\n`
+  let server: ReturnType<typeof Bun.serve>
+  // /ws: the agent feed. Only what changes a decision: a heads-up 3 picks out,
+  // our pick (with the board), status changes, errors.
+  let lastWsKey = ''
+  const wsEvent = () => {
+    const s = last
+    if (!s) return lastErr ? { type: 'error', error: lastErr } : null
+    const until = s.picks_until_ours
+    const type = s.our_turn ? 'our_pick' : s.status === 'complete' ? 'complete' : until !== null && until <= 3 ? 'heads_up' : null
+    if (!type) return null
+    const key = `${type}:${s.pick}`
+    if (key === lastWsKey) return null
+    lastWsKey = key
+    const top = s.top.slice(0, type === 'our_pick' ? 12 : 6).map((r) => `${r.player} ${r.pos} t${r.tier} rec=${r.rec} gain=${r.gain} adp=${r.adp} gone=${r.gone}%/${r.gone2 ?? '-'}% ${r.flag}`.trim())
+    return { type, pick: s.pick, round: s.round, on_clock: s.on_clock, next_ours: s.next_ours, owned: s.owned, roster: s.ours.map((p) => `${p.player} ${p.pos}`), last: s.recent[0] ? `${s.recent[0].pick} ${s.recent[0].player} ${s.recent[0].pos} by ${s.recent[0].by}` : null, top }
+  }
   const push = () => {
     const msg = payload()
+    const ev = wsEvent()
+    if (ev) server?.publish('agent', JSON.stringify(ev))
     for (const c of clients) {
       try {
         c.enqueue(msg)
@@ -169,11 +188,20 @@ export function serveLive(season: string, port: number, everyMs: number, draftId
         clients.delete(c)
       }
   }, 15_000)
-  const server = Bun.serve({
+  server = Bun.serve({
     port,
     hostname: '0.0.0.0', // reachable over the tailnet too (e.g. studio:4242), not just localhost
-    fetch(req) {
+    websocket: {
+      open(ws) {
+        ws.subscribe('agent')
+        const ev = wsEvent()
+        ws.send(JSON.stringify(ev ?? { type: 'hello', pick: last?.pick, status: last?.status, next_ours: last?.next_ours }))
+      },
+      message() {},
+    },
+    fetch(req, srv) {
       const url = new URL(req.url)
+      if (url.pathname === '/ws') return (srv as any).upgrade(req) ? undefined : new Response('upgrade failed', { status: 400 })
       if (url.pathname === '/data') return Response.json({ state: last, error: lastErr })
       if (url.pathname === '/events') {
         let ctrl: ReadableStreamDefaultController
@@ -241,8 +269,8 @@ td:first-child,th:first-child,td.l,th.l{text-align:left}tbody tr:nth-child(even)
 <script>
 const $=s=>document.querySelector(s);
 const g=v=>v==null?'':'<span class="'+(v>=70?'gone':v<=30?'safe':'')+'">'+v+'%</span>';
-const row=r=>'<tr><td class=l><b>'+r.player+'</b> <span class=small>'+r.team+'</span></td><td class="t'+Math.min(r.tier,2)+'">'+r.pos+' t'+r.tier+'</td><td>'+r.pts+'</td><td>'+r.vorp+'</td><td>'+r.val+'</td><td><b>'+r.rec+'</b></td><td>'+(r.adp??'—')+'</td><td>'+g(r.gone)+'</td><td>'+g(r.gone2)+'</td><td class="l flag">'+(r.flag||'')+'</td></tr>';
-const hdr='<thead><tr><th class=l>player</th><th>pos</th><th>pts</th><th>vorp</th><th>val</th><th>rec</th><th>adp</th><th>gone@1</th><th>gone@2</th><th class=l>flags</th></tr></thead>';
+const row=r=>'<tr><td class=l><b>'+r.player+'</b> <span class=small>'+r.team+'</span></td><td class="t'+Math.min(r.tier,2)+'">'+r.pos+' t'+r.tier+'</td><td>'+r.pts+'</td><td>'+r.vorp+'</td><td>'+r.val+'</td><td>'+r.gain+'</td><td><b>'+r.rec+'</b></td><td>'+(r.adp??'—')+'</td><td>'+g(r.gone)+'</td><td>'+g(r.gone2)+'</td><td class="l flag">'+(r.flag||'')+'</td></tr>';
+const hdr='<thead><tr><th class=l>player</th><th>pos</th><th>pts</th><th>vorp</th><th>val</th><th>gain</th><th>rec</th><th>adp</th><th>gone@1</th><th>gone@2</th><th class=l>flags</th></tr></thead>';
 let lastTitle='';
 function render({state:s,error}){
 if(!s){$('#st').textContent=error||'loading…';return}

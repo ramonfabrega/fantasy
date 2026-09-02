@@ -134,9 +134,11 @@ export function rankRows(rows: ProjRow[]) {
     K: pts('K', 11),
     DEF: pts('DEF', 11),
   }
+  benchRepl = {}
   for (const [pos, list] of Object.entries(byPos)) {
     const sRepl = starterRepl[pos] ?? 0
     const bRepl = list[(DRAFT_REPL[pos] ?? 13) - 1]?.pts ?? 0
+    benchRepl[pos] = bRepl
     let tier = 1
     list.forEach((r, i) => {
       r.pos_rank = i + 1
@@ -180,23 +182,49 @@ export function goneProb(adp: number | null, at: number): number {
 // --------------------------------------------------------- recommendation
 
 export const STARTERS: Record<string, number> = { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 }
+export const FLEX = ['RB', 'WR', 'TE']
+
+/** Draft-end (waiver) replacement pts per position; set by rankRows. */
+export let benchRepl: Record<string, number> = {}
 
 /**
- * Need multiplier on VORP given what we already hold and the round.
- * Encodes doctrine: RB/WR depth is real value (flex + injuries), QB waits
- * (1-QB league, late-QB edge is corpus-validated), one TE, K/DEF last two rounds.
+ * Points of the best legal lineup from `rows`, with every empty starter slot
+ * filled at waiver-replacement level. So an empty WR2 costs exactly what a
+ * waiver WR scores, and a real WR2 is credited with the difference.
  */
-export function needMult(pos: string, owned: Record<string, number>, round: number, rounds = 15): number {
+export function lineupPts(rows: ProjRow[]): number {
+  const by = (pos: string) => rows.filter((r) => r.pos === pos).sort((a, b) => b.pts - a.pts)
+  const used = new Set<string>()
+  let total = 0
+  for (const [pos, n] of Object.entries(STARTERS)) {
+    const list = by(pos)
+    for (let i = 0; i < n; i++) {
+      const r = list[i]
+      if (r) {
+        used.add(r.id)
+        total += r.pts
+      } else total += benchRepl[pos] ?? 0
+    }
+  }
+  const flex = rows
+    .filter((r) => FLEX.includes(r.pos) && !used.has(r.id))
+    .sort((a, b) => b.pts - a.pts)[0]
+  total += flex ? flex.pts : Math.max(...FLEX.map((p) => benchRepl[p] ?? 0))
+  return total
+}
+
+/**
+ * Policy multiplier — doctrine that the lineup math can't see:
+ * late QB (1-QB league, corpus-validated), one TE, K/DEF only in the last two rounds.
+ */
+export function policyMult(pos: string, owned: Record<string, number>, round: number, rounds = 15): number {
   const n = owned[pos] ?? 0
   switch (pos) {
-    case 'RB':
-    case 'WR':
-      return [1, 1, 0.85, 0.6, 0.45, 0.3][n] ?? 0.2
-    case 'TE':
-      return n === 0 ? 1 : n === 1 ? 0.25 : 0.05
     case 'QB':
       if (n === 0) return round >= 8 ? 1 : round >= 5 ? 0.7 : 0.5
-      return n === 1 ? 0.15 : 0.02
+      return 0.25
+    case 'TE':
+      return n === 0 ? 1 : 0.35
     case 'K':
     case 'DEF':
       if (round < rounds - 1) return 0
@@ -205,32 +233,38 @@ export function needMult(pos: string, owned: Record<string, number>, round: numb
   return 1
 }
 
-export type Rec = ProjRow & { rec: number; gone: number; gone2: number | null }
+export type Rec = ProjRow & { rec: number; gain: number; gone: number; gone2: number | null }
 
-/** Rank available players for us at pick `at` (and our following pick `at2`). */
+/**
+ * Rank available players for us at pick `at` (and our following pick `at2`).
+ * rec = (lineup gain if we add them now) + 0.4 × bench/upside value, × policy × risk.
+ * Lineup gain is what actually wins weeks; the bench term keeps depth and
+ * upside fliers in the conversation once starters are set.
+ */
 export function recommend(
   available: ProjRow[],
-  owned: Record<string, number>,
+  ours: ProjRow[],
   at: number,
   at2: number | null,
   teams = 12,
   rounds = 15,
 ): Rec[] {
   const round = Math.ceil(at / teams)
+  const owned = countPos(ours)
+  const base = lineupPts(ours)
   return available
     .map((r) => {
-      const mult = needMult(r.pos, owned, round, rounds)
+      const mult = policyMult(r.pos, owned, round, rounds)
       // flagged players: a real risk discount, never a silent exclusion
       const risk = r.inj === 'IR' || r.inj === 'PUP' || r.inj === 'Sus' || r.inj === 'NA' ? 0.35
         : r.inj === 'Out' || r.inj === 'Doubtful' ? 0.7
         : 1
-      // mult 0 = position closed for this round (K/DEF early): hard exclude.
-      // Negative VORP stays negative and unscaled so ordering among bench
-      // fliers is by value, not by how little we need the position.
-      const rec = mult === 0 ? -9999 : r.val > 0 ? r.val * mult * risk : r.val * (2 - mult) / risk
+      const gain = mult === 0 ? 0 : Math.round(lineupPts([...ours, r]) - base)
+      const rec = mult === 0 ? -9999 : (gain + 0.4 * Math.max(r.val, 0)) * mult * risk
       return {
         ...r,
         rec: Math.round(rec),
+        gain,
         gone: Math.round(goneProb(r.adp, at) * 100),
         gone2: at2 ? Math.round(goneProb(r.adp, at2) * 100) : null,
       }

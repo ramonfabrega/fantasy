@@ -6,8 +6,8 @@
 import { api, LEAGUE_ID, USER_ID } from './sleeper'
 import {
   buildBoard,
-  countPos,
   flag,
+  lineupPts,
   picksForSlot,
   recommend,
   slotForPick,
@@ -98,7 +98,7 @@ export async function mockDraft(season: string, sims: number, fresh = false) {
       let choice: ProjRow
       if (sl === slot) {
         const next = ourPicks.find((x) => x > n) ?? null
-        const recs = recommend(live, countPos(oursRows), n, next, teams, rounds)
+        const recs = recommend(live, oursRows, n, next, teams, rounds)
         choice = recs[0]!
         oursRows.push(choice)
         const ch = (chosen[n] ??= {})
@@ -111,7 +111,7 @@ export async function mockDraft(season: string, sims: number, fresh = false) {
       gone.add(choice.id)
       o[choice.pos] = (o[choice.pos] ?? 0) + 1
     }
-    rosterPts.push(startersPts(oursRows))
+    rosterPts.push(lineupPts(oursRows))
   }
 
   const byId = new Map(board.map((r) => [r.id, r]))
@@ -150,24 +150,4 @@ export async function mockDraft(season: string, sims: number, fresh = false) {
     ],
     plan,
   }
-}
-
-/** Projected points of the best legal starting lineup from a set of players. */
-export function startersPts(rows: ProjRow[]): number {
-  const by = (pos: string) => rows.filter((r) => r.pos === pos).sort((a, b) => b.pts - a.pts)
-  const take = (list: ProjRow[], n: number) => list.slice(0, n)
-  const qb = take(by('QB'), 1)
-  const rb = take(by('RB'), 2)
-  const wr = take(by('WR'), 2)
-  const te = take(by('TE'), 1)
-  const k = take(by('K'), 1)
-  const def = take(by('DEF'), 1)
-  const used = new Set([...qb, ...rb, ...wr, ...te].map((r) => r.id))
-  const flex = rows
-    .filter((r) => ['RB', 'WR', 'TE'].includes(r.pos) && !used.has(r.id))
-    .sort((a, b) => b.pts - a.pts)[0]
-  return [...qb, ...rb, ...wr, ...te, ...k, ...def, ...(flex ? [flex] : [])].reduce(
-    (s, r) => s + r.pts,
-    0,
-  )
 }
