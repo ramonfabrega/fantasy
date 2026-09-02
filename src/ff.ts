@@ -618,16 +618,17 @@ cli.command('live', {
     serve: z.coerce.number().optional().describe('Serve an auto-refreshing page on this port (e.g. 4242)'),
     every: z.coerce.number().optional().describe('Sleeper poll interval seconds (default 1); pages get pushed updates via SSE'),
     season: z.string().optional().describe('Season (default: current)'),
+    draft: z.string().optional().describe('Draft ID override (e.g. a Sleeper mock draft, to rehearse)'),
   }),
   async run({ options }) {
     const season = options.season ?? (await api('/state/nfl')).season
     const everyMs = (options.every ?? 1) * 1000
     if (options.serve) {
-      const url = serveLive(season, options.serve, everyMs)
-      console.error(`ff live → ${url}  (polling Sleeper every ${everyMs / 1000}s)`)
+      const url = serveLive(season, options.serve, everyMs, options.draft)
+      console.error(`ff live → ${url}  (polling Sleeper every ${everyMs / 1000}s${options.draft ? `, draft ${options.draft}` : ''})`)
       await new Promise(() => {})
     }
-    return draftState(season)
+    return draftState(season, false, options.draft)
   },
 })
 

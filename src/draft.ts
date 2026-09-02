@@ -18,22 +18,25 @@ export type DraftState = Awaited<ReturnType<typeof draftState>>
 
 /** League/draft/users change rarely; picks change every few seconds. The live
  * loop keeps a context for ~30s and re-fetches only picks each tick. */
-type Ctx = { draft: any; users: Record<string, any>; board: ProjRow[]; at: number }
+type Ctx = { draft: any; users: Record<string, any>; board: ProjRow[]; at: number; key: string }
 let ctx: Ctx | null = null
-export async function draftCtx(season: string, fresh = false): Promise<Ctx> {
-  if (ctx && !fresh && Date.now() - ctx.at < 30_000) return ctx
+/** `draftId` overrides the league's draft — e.g. a Sleeper mock draft, to rehearse the flow. */
+export async function draftCtx(season: string, fresh = false, draftId?: string): Promise<Ctx> {
+  const key = draftId ?? 'league'
+  if (ctx && !fresh && ctx.key === key && Date.now() - ctx.at < 30_000) return ctx
   const league = await api(`/league/${LEAGUE_ID}`)
   const [draft, users, board] = await Promise.all([
-    api(`/draft/${league.draft_id}`),
+    api(`/draft/${draftId ?? league.draft_id}`),
     leagueUsers(LEAGUE_ID),
     buildBoard(season, fresh),
   ])
-  ctx = { draft, users, board, at: Date.now() }
+  // mock drafts have strangers in them: name slots by user id when not a leaguemate
+  ctx = { draft, users, board, at: Date.now(), key }
   return ctx
 }
 
-export async function draftState(season: string, fresh = false) {
-  const { draft, users, board } = await draftCtx(season, fresh)
+export async function draftState(season: string, fresh = false, draftId?: string) {
+  const { draft, users, board } = await draftCtx(season, fresh, draftId)
   const picks = await api<any[]>(`/draft/${draft.draft_id}/picks`)
   const teams: number = draft.settings?.teams ?? 12
   const rounds: number = draft.settings?.rounds ?? 15
@@ -125,7 +128,7 @@ function recRow(r: Rec) {
 // for their rate limits), diff, and PUSH to every open page over server-sent
 // events. The page never polls; a pick shows up within one poll interval.
 
-export function serveLive(season: string, port: number, everyMs: number) {
+export function serveLive(season: string, port: number, everyMs: number, draftId?: string) {
   let last: DraftState | null = null
   let lastJson = ''
   let lastErr = ''
@@ -143,7 +146,7 @@ export function serveLive(season: string, port: number, everyMs: number) {
   }
   const tick = async () => {
     try {
-      const s = await draftState(season)
+      const s = await draftState(season, false, draftId)
       const { updated, ...rest } = s
       const j = JSON.stringify(rest)
       const changed = j !== lastJson || lastErr !== ''
