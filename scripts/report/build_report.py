@@ -72,6 +72,9 @@ def runrow(label, picks, cls):
     return f'<div class="run"><span class="rl">{chip(label) if label in SK else f"<span class=\"chip p-X\">{label}</span>"}</span><span class="track {cls}">{dots}</span><span class="rn">{len(picks)}</span></div>'
 runs = runrow('QB', qbs, 't-QB') + runrow('TE', tes, 't-TE') + runrow('DEF', defs, 't-X') + runrow('K', ks, 't-X')
 
+drafters = sorted(teams, key=lambda t: -t['valOverPar'])
+dr = ''.join(f'<li class="{"pos" if t["valOverPar"] > 0 else "neg"}"><span class="n">{i + 1}</span>{avatar(t, 28)}<span class="who"><b>{esc(t["teamName"])}</b><small>slot {t["slot"]}</small></span><span class="dv">{t["valOverPar"]:+d}</span></li>' for i, t in enumerate(drafters))
+
 cards = []
 for t in teams:
     st = ''.join(f'<li>{chip(l["slot"] if l["slot"] != "FLEX" else l["pos"])}<span class="nm">{esc(l["player"])}{" <em>Q</em>" if l["inj"] else ""}</span><span class="v">{l["pts"] if l["pts"] else "—"}</span></li>' for l in t['lineup'])
@@ -135,6 +138,15 @@ section{{margin-top:44px}}
 .sup .lbl{{font-family:var(--disp);text-transform:uppercase;letter-spacing:.1em;font-size:12px;font-weight:600;color:var(--ink2)}}
 .sup b{{font-family:var(--disp);font-size:24px;line-height:1.05;font-weight:700}}
 .sup .sub{{color:var(--ink2);font-size:13px;margin-top:auto}}
+/* drafters */
+.drafters{{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:8px 14px}}
+.drafters li{{display:grid;grid-template-columns:20px 28px 1fr auto;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surf)}}
+.drafters .n{{font-family:var(--disp);font-weight:700;color:var(--ink2);text-align:right}}
+.drafters .av{{width:28px;height:28px}}
+.drafters .who b{{font-size:16px}}
+.drafters .dv{{font-family:var(--disp);font-weight:700;font-size:18px}}
+.drafters .pos .dv{{color:var(--good)}}.drafters .neg .dv{{color:var(--bad)}}
+@media (max-width:820px){{.drafters{{grid-template-columns:repeat(2,1fr)}}}}
 /* runs */
 .runs{{display:flex;flex-direction:column;gap:10px}}
 .run{{display:grid;grid-template-columns:44px 1fr 28px;gap:12px;align-items:center}}
@@ -199,6 +211,12 @@ section{{margin-top:44px}}
 <section>
   <div class="sh"><h2>Superlatives</h2><small>Par = what the board's Nth-ranked player was worth at that pick</small></div>
   <div class="sups">{''.join(sups)}</div>
+</section>
+
+<section>
+  <div class="sh"><h2>Who drafted best</h2><small>Value gained over par, all 15 picks. Slot-neutral: slot 1 is supposed to end up stronger</small></div>
+  <ol class="drafters">{dr}</ol>
+  <p class="runs-note">Roster strength rewards the draft slot; this rewards the picks. A positive number means the team beat the board across the night, a negative one means it left value on the table.</p>
 </section>
 
 <section>
