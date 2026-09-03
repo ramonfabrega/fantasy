@@ -35,7 +35,7 @@ for (let slot = 1; slot <= teams; slot++) {
     rows.push(row)
     pk.push({
       id: p.player_id, pick: p.pick_no, round: p.round, player: name, pos: row.pos, team: row.team, pts: Math.round(row.pts), val: row.val, vorp: row.vorp,
-      adp: row.adp, tier: row.tier, inj: row.inj, exp: row.exp, par: parVal(p.pick_no), steal: row.val - parVal(p.pick_no),
+      adp: row.adp, tier: row.tier, inj: row.inj, exp: row.exp, par: parVal(p.pick_no), steal: Math.max(row.val, 0) - Math.max(parVal(p.pick_no), 0), // floored: a negative par is not free value
       adpEdge: row.adp == null ? null : Math.round(row.adp - p.pick_no),
     })
   }
@@ -58,8 +58,8 @@ for (let slot = 1; slot <= teams; slot++) {
   const rookies = starters.filter((r) => r.exp === 0).map((r) => r.player)
   const best = [...pk].sort((a, b) => b.steal - a.steal)[0]
   const worst = [...pk].sort((a, b) => a.steal - b.steal)[0]
-  const marketSteal = [...pk].filter((p) => p.adpEdge != null).sort((a, b) => b.adpEdge! - a.adpEdge!)[0]
-  const marketReach = [...pk].filter((p) => p.adpEdge != null).sort((a, b) => a.adpEdge! - b.adpEdge!)[0]
+  const marketReach = [...pk].filter((p) => p.adpEdge != null).sort((a, b) => b.adpEdge! - a.adpEdge!)[0] // taken furthest ahead of ADP
+  const marketSteal = [...pk].filter((p) => p.adpEdge != null).sort((a, b) => a.adpEdge! - b.adpEdge!)[0] // fell furthest past ADP
   teamsOut.push({
     slot, owner: u.display_name, teamName: u.metadata?.team_name ?? u.display_name, avatar: u.avatar ?? null,
     lineupPts: Math.round(lp), skillPts: Math.round(skill), benchVal: Math.round(benchVal), totalVal: pk.reduce((a, p) => a + p.val, 0),
@@ -79,8 +79,8 @@ const out = {
   generated: new Date().toISOString(), teams, rounds, benchRepl, posMedian,
   leagueSteals: [...all].sort((a, b) => b.steal - a.steal).slice(0, 8),
   leagueReaches: [...all].sort((a, b) => a.steal - b.steal).slice(0, 8),
-  marketSteals: [...all].filter((p) => p.adpEdge != null).sort((a, b) => b.adpEdge - a.adpEdge).slice(0, 8),
-  marketReaches: [...all].filter((p) => p.adpEdge != null).sort((a, b) => a.adpEdge - b.adpEdge).slice(0, 8),
+  marketReaches: [...all].filter((p) => p.adpEdge != null).sort((a, b) => b.adpEdge - a.adpEdge).slice(0, 8),
+  marketSteals: [...all].filter((p) => p.adpEdge != null).sort((a, b) => a.adpEdge - b.adpEdge).slice(0, 8),
   runs: { QB: all.filter((p) => p.pos === 'QB').map((p) => p.pick).sort((a, b) => a - b), TE: all.filter((p) => p.pos === 'TE').map((p) => p.pick).sort((a, b) => a - b), DEF: all.filter((p) => p.pos === 'DEF').map((p) => p.pick).sort((a, b) => a - b), K: all.filter((p) => p.pos === 'K').map((p) => p.pick).sort((a, b) => a - b) },
   teams: teamsOut,
 }

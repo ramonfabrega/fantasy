@@ -63,13 +63,22 @@ sups = [
     sup('Taken furthest ahead of ADP', f'{pname(offmkt)}', f'Pick {offmkt["pick"]}, ADP {offmkt["adp"]:.0f} · {esc(offmkt["owner"])}'),
     sup('Most fragile lineup', ' & '.join(esc(t['teamName']) for t in teams if len(t['flagged']) == len(fragile['flagged'])), f'{len(fragile["flagged"])} starters flagged Questionable'),
     sup('Deepest bench', esc(deep['teamName']), f'{deep["benchVal"]} bench value, most in the league'),
-    sup('Forgot a defense', ' & '.join(esc(t['teamName']) for t in nodef), 'No DEF drafted, waivers Wednesday'),
+    sup('Forgot a defense', ' & '.join(esc(t['teamName']) for t in nodef), f'No DEF drafted. Costs about {d["posMedian"]["DEF"] - d["benchRepl"]["DEF"]:.0f} pts vs a median one, waivers fix it Wednesday'),
     sup('Tightest race', f'{teams[0]["lineupPts"] - teams[-1]["lineupPts"]} pts', f'#1 to #12 over a full season, about {(teams[0]["lineupPts"] - teams[-1]["lineupPts"]) / 17:.0f} a week'),
 ]
 
 def runrow(label, picks, cls):
     dots = ''.join(f'<i style="left:{(p - 1) / 179 * 100:.2f}%" title="pick {p}"></i>' for p in picks)
     return f'<div class="run"><span class="rl">{chip(label) if label in SK else f"<span class=\"chip p-X\">{label}</span>"}</span><span class="track {cls}">{dots}</span><span class="rn">{len(picks)}</span></div>'
+def burst(picks, n):
+    # tightest window containing n picks
+    best = min(range(len(picks) - n + 1), key=lambda i: picks[i + n - 1] - picks[i])
+    return picks[best], picks[best + n - 1]
+qa, qb_ = burst(qbs, 5)
+ta, tb = burst(tes, 6)
+runs_note = (f'Quarterbacks: the first two went at {qbs[0]} and {qbs[1]}, then five more between picks {qa} and {qb_}. '
+             f'Tight ends: six went between {ta} and {tb}, {sum(1 for p in tes if p <= 68)} of the {len(tes)} were gone by pick 68. '
+             f'Defenses: first off the board at {defs[0]}, the fifth at {defs[4]}, and {len(defs)} of 12 teams took one at all. Kickers started at {ks[0]}.')
 runs = runrow('QB', qbs, 't-QB') + runrow('TE', tes, 't-TE') + runrow('DEF', defs, 't-X') + runrow('K', ks, 't-X')
 
 drafters = sorted(teams, key=lambda t: -t['valOverPar'])
@@ -216,14 +225,14 @@ section{{margin-top:44px}}
 <section>
   <div class="sh"><h2>Who drafted best</h2><small>Value gained over par, all 15 picks. Slot-neutral: slot 1 is supposed to end up stronger</small></div>
   <ol class="drafters">{dr}</ol>
-  <p class="runs-note">Roster strength rewards the draft slot; this rewards the picks. A positive number means the team beat the board across the night, a negative one means it left value on the table.</p>
+  <p class="runs-note">Roster strength rewards the draft slot; this rewards the picks. Par at each pick is what the board's Nth-best player was worth, floored at zero so a late pick can't score points for clearing a bar that wasn't there. Full disclosure: the board is claude boys' own draft aid, so this measures agreement with one team's rankings, not an objective truth. Zero means the team drafted exactly to par.</p>
 </section>
 
 <section>
   <div class="sh"><h2>The runs</h2><small>When each position got taken, pick 1 to 180</small></div>
   <div class="runs">{runs}</div>
   <div class="rounds"><span></span><span class="r"><span>Rd 1</span><span>Rd 4</span><span>Rd 7</span><span>Rd 10</span><span>Rd 13</span><span>Rd 15</span></span><span></span></div>
-  <p class="runs-note">Quarterbacks went in one burst from pick 56 to 71 after Allen and Lamar broke the seal. Tight ends were gone by pick 68 outside the streamers. Defenses started at 104 and the top five were gone in 27 picks.</p>
+  <p class="runs-note">{runs_note}</p>
 </section>
 
 <section>
