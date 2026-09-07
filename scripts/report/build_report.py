@@ -1,14 +1,29 @@
-import json, html
+import json, html, re
 T = 'scripts/report/out/'
 d = json.load(open(T + 'postdraft.json'))
-av = json.load(open(T + 'avatars.json'))
+try:
+    av = json.load(open(T + 'avatars.json'))
+except FileNotFoundError:
+    av = {}  # no avatars fetched; every team falls back to initials
 teams = d['teams']
 esc = html.escape
 SK = ('QB', 'RB', 'WR', 'TE')
 def skill(p): return p['pos'] in SK
 allp = [dict(p, owner=t['owner'], teamName=t['teamName']) for t in teams for p in t['picks']]
-median = sorted(t['lineupPts'] for t in teams); median = (median[5] + median[6]) / 2
-LO, HI = 1550, 1750
+_ls = sorted(t['lineupPts'] for t in teams)
+median = (_ls[(len(_ls) - 1) // 2] + _ls[len(_ls) // 2]) / 2
+# Bar scale: bracket the actual spread so any league renders, rounded to a
+# readable step and padded so the best team never pins to the right edge.
+_pts = [t['lineupPts'] for t in teams]
+_pad = max(25, (max(_pts) - min(_pts)) * 0.35)
+LO = int((min(_pts) - _pad) // 50 * 50)
+HI = int(-(-(max(_pts) + _pad) // 50) * 50)
+
+# masthead date: the draft's own start time (ms epoch), falling back to generation day
+import datetime as _dt
+_ms = d.get('draftStart')
+DRAFTED = (_dt.datetime.fromtimestamp(_ms / 1000) if _ms else
+           _dt.datetime.fromisoformat(d['generated'].replace('Z', '+00:00'))).strftime('%b %-d, %Y')
 
 # position ranks (1 = best) per team for QB RB WR TE FLEX
 posr = {}
@@ -203,11 +218,11 @@ section{{margin-top:44px}}
 <div class="wrap">
 <header class="mast">
   <div>
-    <div class="eyebrow">The Ballers Fantasy League · Sleeper</div>
+    <div class="eyebrow">{esc(d.get('leagueName', 'Fantasy League'))} · Sleeper</div>
     <h1>Draft Report<br>2026</h1>
-    <p>All 180 picks, every roster scored the same way: season projections rescored to league scoring (half-PPR, 4-pt pass TD), best legal starting lineup, 1 QB / 2 RB / 2 WR / 1 TE / FLEX / K / DEF. No vibes, one ruler.</p>
+    <p>All {len(allp)} picks, every roster scored the same way: season projections rescored to league scoring (half-PPR, 4-pt pass TD), best legal starting lineup, 1 QB / 2 RB / 2 WR / 1 TE / FLEX / K / DEF. No vibes, one ruler.</p>
   </div>
-  <div class="stamp">Drafted Sep 2, 2026<b>12 teams · 15 rounds</b>snake, slot 1 to 12</div>
+  <div class="stamp">Drafted {DRAFTED}<b>{len(teams)} teams · {d['rounds']} rounds</b>{d.get('draftType', 'snake')}, slot 1 to {len(teams)}</div>
 </header>
 
 <section>
@@ -247,6 +262,8 @@ section{{margin-top:44px}}
 </section>
 </div>
 '''
-open(T + 'ballers-draft-report.html', 'w').write(page)
+_slug = re.sub(r'[^a-z0-9]+', '-', d.get('leagueName', 'league').lower()).strip('-') or 'league'
+_out = f'{_slug}-draft-report.html'
+open(T + _out, 'w').write(page)
 print('ok', len(page))
 print('steal', steal['player'], steal['owner'], '| reach', reach['player'], reach['owner'], '| bargain', bargain['player'], bargain['adp'], bargain['pick'], '| offmkt', offmkt['player'], offmkt['adp'], offmkt['pick'], '| fragile', fragile['owner'], len(fragile['flagged']), '| deep', deep['owner'], '| nodef', [t['owner'] for t in nodef], '| median', median)

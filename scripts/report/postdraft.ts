@@ -76,7 +76,7 @@ const posMedian: Record<string, number> = {}
 for (const k of ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF']) posMedian[k] = med(teamsOut.map((t) => t.posPts[k] ?? 0))
 const all = teamsOut.flatMap((t) => t.picks.map((p: Pick) => ({ ...p, owner: t.owner })))
 const out = {
-  generated: new Date().toISOString(), teams, rounds, benchRepl, posMedian,
+  generated: new Date().toISOString(), leagueName: league.name, teamCount: teams, rounds, draftType: draft.type, draftStart: draft.start_time ?? null, benchRepl, posMedian,
   leagueSteals: [...all].sort((a, b) => b.steal - a.steal).slice(0, 8),
   leagueReaches: [...all].sort((a, b) => a.steal - b.steal).slice(0, 8),
   marketReaches: [...all].filter((p) => p.adpEdge != null).sort((a, b) => b.adpEdge - a.adpEdge).slice(0, 8),
@@ -85,5 +85,29 @@ const out = {
   teams: teamsOut,
 }
 await Bun.write('scripts/report/out/postdraft.json', JSON.stringify(out, null, 1))
+
+// Avatars as data URIs, keyed by owner: the report is published as an artifact and
+// that CSP blocks sleepercdn, so the images have to travel inside the HTML.
+const avatars: Record<string, string> = {}
+await Promise.all(
+  teamsOut.map(async (t) => {
+    if (!t.avatar) return
+    try {
+      const res = await fetch(`https://sleepercdn.com/avatars/thumbs/${t.avatar}`)
+      if (!res.ok) return
+      const buf = Buffer.from(await res.arrayBuffer())
+      // Sleeper labels these image/png but serves JPEG; sniff the magic bytes.
+      const mime =
+        buf[0] === 0xff && buf[1] === 0xd8 ? 'image/jpeg'
+        : buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png'
+        : buf[0] === 0x47 && buf[1] === 0x49 ? 'image/gif'
+        : (res.headers.get('content-type') ?? 'image/png')
+      avatars[t.owner] = `data:${mime};base64,${buf.toString('base64')}`
+    } catch {
+      // no avatar is fine - the report falls back to initials
+    }
+  }),
+)
+await Bun.write('scripts/report/out/avatars.json', JSON.stringify(avatars))
 for (const t of teamsOut) console.log(`${String(t.rank).padStart(2)} ${t.owner.padEnd(16)} ${t.teamName.padEnd(20)} lineup ${t.lineupPts} skill ${t.skillPts} bench ${t.benchVal} valOverPar ${t.valOverPar}  best: ${t.best.player} (${t.best.steal > 0 ? '+' : ''}${t.best.steal})  worst: ${t.worst.player} (${t.worst.steal})  flags: ${t.flagged.join(', ')}`)
 console.log('posMedian', posMedian)
