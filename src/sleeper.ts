@@ -5,9 +5,21 @@ import { join } from 'node:path'
 const BASE = 'https://api.sleeper.app/v1'
 
 // The Ballers Fantasy League, 2026. Override via env for other leagues/seasons.
-export const LEAGUE_ID = process.env.FF_LEAGUE_ID ?? '1385663706213388288'
-export const USER_ID = process.env.FF_USER_ID ?? '1385762763669794816' // ramonfabrega
-export const USERNAME = process.env.FF_USERNAME ?? 'ramonfabrega'
+//
+// `.env.example` ships these blank, so a copied .env sets them to "" — treat an
+// empty or whitespace value as unset, or every default silently becomes "".
+const env = (k: string) => {
+  const v = process.env[k]
+  return v && v.trim() ? v.trim() : undefined
+}
+
+export const LEAGUE_ID = env('FF_LEAGUE_ID') ?? '1385663706213388288'
+export const USER_ID = env('FF_USER_ID') ?? '1385762763669794816' // ramonfabrega
+export const USERNAME = env('FF_USERNAME') ?? 'ramonfabrega'
+
+/** Someone pointed this at their own league but left the identity as ours. */
+export const FOREIGN_LEAGUE =
+  env('FF_LEAGUE_ID') !== undefined && env('FF_USER_ID') === undefined && env('FF_USERNAME') === undefined
 
 export async function api<T = any>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)

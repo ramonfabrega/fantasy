@@ -8,6 +8,7 @@ import {
   players,
   USER_ID,
   USERNAME,
+  FOREIGN_LEAGUE,
 } from './sleeper'
 import { valueBoard } from './value'
 import { buildAdp, crawl, study } from './meta'
@@ -131,11 +132,21 @@ cli.command('roster', {
     const user = Object.values(users).find(
       (u: any) => u.display_name.toLowerCase() === owner,
     ) as any
-    const r = rosters.find((x) => x.owner_id === user?.user_id)
+    const who = args.owner ?? USERNAME
+    if (!user)
+      return {
+        owner: who,
+        roster: 'no such owner',
+        note:
+          FOREIGN_LEAGUE && !args.owner
+            ? `"${who}" is not in this league. FF_LEAGUE_ID is set but FF_USER_ID/FF_USERNAME still default to this repo's author — set them to your own Sleeper account in .env (README > Configuration).`
+            : `no owner named "${who}" in this league — check the spelling against \`ff members\`.`,
+      }
+    const r = rosters.find((x) => x.owner_id === user.user_id)
     if (!r) {
       const open = rosters.filter((x) => !x.owner_id).map((x) => x.roster_id)
       return {
-        owner: args.owner ?? USERNAME,
+        owner: who,
         roster: 'none assigned',
         open_roster_slots: open,
         note: 'user is in the league but not attached to a roster yet',

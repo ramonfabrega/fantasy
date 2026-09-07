@@ -37,6 +37,10 @@ cp .env.example .env
 | `FF_USERNAME` | same | ramonfabrega |
 | `ODDS_API_KEY` | `ff odds` only | — |
 
+Set the three `FF_` values together. `FF_LEAGUE_ID` alone points the tools at
+your league while "our team" still resolves to this repo's author, so `ff roster`
+and `ff draft` won't find you — they'll say so rather than guessing.
+
 To find your IDs: `https://api.sleeper.app/v1/user/<username>` gives `user_id`,
 then `https://api.sleeper.app/v1/user/<user_id>/leagues/nfl/2026` lists leagues.
 Grab a free odds key at [the-odds-api.com](https://the-odds-api.com) (500
