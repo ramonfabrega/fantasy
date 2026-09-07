@@ -24,6 +24,13 @@ Everything comes from your configured league (`FF_LEAGUE_ID`) — team count, ro
 count, draft date and the bar scale are all derived from the data, so this works
 for any league without editing the generator.
 
+If you change `postdraft.ts`, run `bunx tsc --noEmit` before publishing. It builds
+one big object literal, and a duplicate key there is silently legal JavaScript —
+the later one wins and the earlier value vanishes without a runtime error. That
+exact bug shipped here once (`teams` was both the team count and the team array,
+so the count never reached the report). `tsc` catches it as TS1117; nothing else
+will.
+
 ## What the numbers mean
 
 - **lineupPts** — projected points of the best legal starting lineup, with empty

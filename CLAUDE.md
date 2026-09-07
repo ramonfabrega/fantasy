@@ -96,7 +96,9 @@ our specific league, and is what a fork replaces.
 
 ### League facts (2026)
 
-Half-PPR, 12 teams, snake draft (15 rds, **30s pick timer**, autopick on), roster
+Half-PPR, 12 teams, snake draft (15 rds, **30s default pick timer — the 2026
+draft ran at 90s**, raised by the commissioner that day; a completed draft object
+reports the default, so read the timer live at draft start), autopick on, roster
 1QB/2RB/2WR/1TE/1FLEX/1K/1DEF + 6 BN, FAAB $100 clearing Wed, playoffs top-6 wk 15,
 median match ON (two W/L per week — floor/consistency matters), IR is COVID-only
 (useless), redraft. IDs and deeper notes live in session memory (`sleeper-league.md`).

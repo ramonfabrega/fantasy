@@ -1,8 +1,8 @@
 # Running a live draft
 
 The runbook for draft night, written after using it for a real 15-round snake
-draft on a 30-second clock: 15 of 15 picks landed as called, no autopicks, no
-misclicks, through two commissioner pauses and one rewind.
+draft: 15 of 15 picks landed as called, no autopicks, no misclicks, through two
+commissioner pauses and one rewind.
 
 The README's [The flow](../README.md#the-flow) covers the week leading up to this.
 This page is only about the two hours themselves.
@@ -60,6 +60,29 @@ Do this. It is the only way to find out that something in your flow is ambiguous
 while it's still free. The pick-call format below exists because a rehearsal
 caught a name-only call selecting the wrong player in Sleeper's search box.
 
+## Know your clock — and read it on the night
+
+Sleeper's league default is a **30-second** pick timer. Design your flow for that:
+if the decision has to be *made* after the clock starts, you have already lost.
+
+But a commissioner can change it, and ours did — the 2026 draft ran on **90
+seconds**, a change made the same day. We only knew because the prep session
+re-read the draft object a few hours before kickoff.
+
+**The gotcha, which will cost you if you inherit someone's notes:** reading a
+*completed* draft's settings does not tell you what the draft ran under. Sleeper
+reports the league default on a finished draft, so a post-hoc
+`curl .../draft/<id>` will happily tell you 30 when the draft actually ran at 90.
+
+So read it live, at draft start, and write it down:
+
+```sh
+curl -s "https://api.sleeper.app/v1/draft/<draft_id>" | python3 -c \
+  "import json,sys; print(json.load(sys.stdin)['settings']['pick_timer'], 'seconds')"
+```
+
+Plan for 30. Enjoy 90 if you get it.
+
 ## The endpoints
 
 `ff live --serve` exposes four things:
@@ -89,8 +112,8 @@ curl -s "https://api.sleeper.app/v1/draft/<draft_id>/picks"
 ## Calling picks
 
 **Always `Player, POS TEAM`. Never a bare name.** Sleeper's search will surface a
-different person with a similar name and you will click it under a 30-second
-clock. Position and team make it unambiguous.
+different person with a similar name and you will click it under the clock.
+Position and team make it unambiguous.
 
 **Always give two fallbacks.** The pick you want may go one slot before you.
 Deciding the fallback in advance is the whole game; deciding it in eight seconds
@@ -145,6 +168,7 @@ you're only setting up one thing, set up the `/ws` feed.
 ## Checklist
 
 - [ ] `bun ff league` — rules are right
+- [ ] pick timer read **live** off the draft object (not from old notes)
 - [ ] `bun ff board --fresh` — projections are current
 - [ ] `bun ff mock --sims 300` — pick plan for your slot
 - [ ] server running; `curl -s localhost:4242/data` returns state

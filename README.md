@@ -168,7 +168,7 @@ them. `--serve` binds `0.0.0.0`, so the page and the socket are reachable from
 another machine on your tailnet (`http://studio:4242/`).
 
 **Call every pick as `Player, POS TEAM`, with two fallbacks.** Names alone are a
-mistake vector under a 30-second clock — Sleeper's search will happily surface a
+mistake vector under the clock — Sleeper's search will happily surface a
 different person with a similar name. Position and team disambiguate.
 
 **In a snake draft your picks come in pairs** (from slot 2: 23/26, 47/50, …). Queue
@@ -176,8 +176,11 @@ both names at the first pick of each pair; the second is nearly always the fallb
 you already discussed.
 
 Note that `ff board` and `ff mock` are **preparation**, not draft-night commands.
-Under a 30-second clock there is no time to run anything — the plan is already
-made, and the only live reads are the `/ws` feed and `/data`.
+Under the clock there is no time to run anything — the plan is already made, and
+the only live reads are the `/ws` feed and `/data`. Sleeper's default timer is 30
+seconds; a commissioner can raise it (ours ran at 90), but read it live off the
+draft object on the night rather than trusting notes — see
+[docs/live-draft.md](docs/live-draft.md).
 
 > **On the served page:** we built it, and in the real draft essentially nobody
 > looked at it. The agent never loaded the page — it read `/data` and `/ws`. The
