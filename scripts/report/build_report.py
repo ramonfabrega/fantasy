@@ -19,6 +19,23 @@ _pad = max(25, (max(_pts) - min(_pts)) * 0.35)
 LO = int((min(_pts) - _pad) // 50 * 50)
 HI = int(-(-(max(_pts) + _pad) // 50) * 50)
 
+# Describe the league's own scoring and roster rather than assuming ours.
+_rec = d.get('scoringRec', 0)
+_ppr = 'PPR' if _rec >= 1 else 'half-PPR' if _rec >= 0.4 else 'standard'
+SCORING_DESC = f"{_ppr}, {d.get('scoringPassTd', 4):g}-pt pass TD"
+
+_rp = d.get('rosterPositions') or []
+if _rp:
+    _seen = []
+    for _s in _rp:
+        if _seen and _seen[-1][0] == _s:
+            _seen[-1][1] += 1
+        else:
+            _seen.append([_s, 1])
+    ROSTER_DESC = ' / '.join(f'{n} {name}' if n > 1 else name for name, n in _seen)
+else:
+    ROSTER_DESC = 'the league starting lineup'
+
 # masthead date: the draft's own start time (ms epoch), falling back to generation day
 import datetime as _dt
 _ms = d.get('draftStart')
@@ -220,7 +237,7 @@ section{{margin-top:44px}}
   <div>
     <div class="eyebrow">{esc(d.get('leagueName', 'Fantasy League'))} · Sleeper</div>
     <h1>Draft Report<br>2026</h1>
-    <p>All {len(allp)} picks, every roster scored the same way: season projections rescored to league scoring (half-PPR, 4-pt pass TD), best legal starting lineup, 1 QB / 2 RB / 2 WR / 1 TE / FLEX / K / DEF. No vibes, one ruler.</p>
+    <p>All {len(allp)} picks, every roster scored the same way: season projections rescored to league scoring ({SCORING_DESC}), best legal starting lineup, {ROSTER_DESC}. No vibes, one ruler.</p>
   </div>
   <div class="stamp">Drafted {DRAFTED}<b>{len(teams)} teams · {d['rounds']} rounds</b>{d.get('draftType', 'snake')}, slot 1 to {len(teams)}</div>
 </header>

@@ -266,6 +266,28 @@ stock Sleeper half-PPR, the re-scoring is a correctness guarantee rather than an
 advantage. The parts that actually pay are the flex-aware baselines, the tier gaps,
 the availability odds from `ff mock`, and being awake.
 
+## What adapts to your league
+
+Everything that matters. All of it is read from your league via the Sleeper API,
+so pointing `FF_LEAGUE_ID` at a different league recalibrates the engine rather
+than reskinning our numbers:
+
+| | read from your league |
+| --- | --- |
+| **Scoring** | `scoring_settings` — PPR vs half-PPR vs standard, pass-TD value, every stat weight. Projections are re-scored stat by stat, not adjusted. |
+| **Roster construction** | `roster_positions` — how many of each position you start, how many flex slots, and which positions can fill them. SUPERFLEX/2QB, 3WR, no-kicker and multi-flex builds all work. |
+| **League size** | `total_rosters` — every replacement baseline is "how many of this position start across the whole league", so a 10-team and a 14-team league get different lines. |
+| **Draft shape** | teams, rounds, snake vs linear, and your slot, off the draft object. |
+
+Concretely: in a superflex league the QB replacement level collapses to the flex
+line and quarterbacks reprice accordingly; in a league that doesn't start a
+kicker, kickers value at zero. Neither requires a code change.
+
+What is *not* derived: the `ff mock` opponent model assumes opponents draft
+roughly to ADP, and the doctrine baked into the recommender (late QB, one TE,
+K/DEF only at the end) is a heuristic tuned on 12-team half-PPR leagues. Both are
+opinions, not league rules — read them as such if your format is unusual.
+
 ## What it reads and writes
 
 Worth knowing before you run someone else's tooling on your machine:

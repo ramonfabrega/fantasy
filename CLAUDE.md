@@ -56,8 +56,13 @@ Sleeper asks max 1 fetch/day; odds cache 6h.
 
 League identity is env-configurable (`FF_LEAGUE_ID`, `FF_USER_ID`, `FF_USERNAME`
 in `src/sleeper.ts`, defaulting to ours) so the repo works as a base for someone
-else's league — see `.env.example` and README. Keep it that way: no new hardcoded
-league IDs.
+else's league — see `.env.example` and README. Keep it that way: **no new
+hardcoded league IDs, and no new hardcoded league SHAPE.** Scoring comes from
+`scoring_settings`; teams/starters/flex come from `leagueShape()` in
+`src/sleeper.ts` (`roster_positions` + `total_rosters`). If you need "12 teams"
+or "2 RB" in a calculation, take it from the `Shape`, never a literal — a
+hardcoded shape produces confidently wrong numbers in someone else's league,
+which is worse than failing.
 
 ## Roadmap
 

@@ -76,7 +76,10 @@ const posMedian: Record<string, number> = {}
 for (const k of ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF']) posMedian[k] = med(teamsOut.map((t) => t.posPts[k] ?? 0))
 const all = teamsOut.flatMap((t) => t.picks.map((p: Pick) => ({ ...p, owner: t.owner })))
 const out = {
-  generated: new Date().toISOString(), leagueName: league.name, teamCount: teams, rounds, draftType: draft.type, draftStart: draft.start_time ?? null, benchRepl, posMedian,
+  generated: new Date().toISOString(), leagueName: league.name, teamCount: teams, rounds, draftType: draft.type, draftStart: draft.start_time ?? null,
+  rosterPositions: (league.roster_positions ?? []).filter((s: string) => s !== 'BN' && s !== 'IR' && s !== 'TAXI'),
+  scoringRec: league.scoring_settings?.rec ?? 0, scoringPassTd: league.scoring_settings?.pass_td ?? 4,
+  benchRepl, posMedian,
   leagueSteals: [...all].sort((a, b) => b.steal - a.steal).slice(0, 8),
   leagueReaches: [...all].sort((a, b) => a.steal - b.steal).slice(0, 8),
   marketReaches: [...all].filter((p) => p.adpEdge != null).sort((a, b) => b.adpEdge - a.adpEdge).slice(0, 8),
