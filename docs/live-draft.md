@@ -60,19 +60,25 @@ Do this. It is the only way to find out that something in your flow is ambiguous
 while it's still free. The pick-call format below exists because a rehearsal
 caught a name-only call selecting the wrong player in Sleeper's search box.
 
-## Know your clock — and read it on the night
+## Know your clock — it can change under you
 
-Sleeper's league default is a **30-second** pick timer. Design your flow for that:
-if the decision has to be *made* after the clock starts, you have already lost.
+Our 2026 draft ran on a **90-second** timer for most of its length, then the
+commissioner dropped it to **30 seconds** partway through the bench rounds to get
+everyone home. The league's configured default was 30s to begin with; it was
+raised to 90 on the morning of the draft.
 
-But a commissioner can change it, and ours did — the 2026 draft ran on **90
-seconds**, a change made the same day. We only knew because the prep session
-re-read the draft object a few hours before kickoff.
+Three different values, one draft. Two consequences:
 
-**The gotcha, which will cost you if you inherit someone's notes:** reading a
-*completed* draft's settings does not tell you what the draft ran under. Sleeper
-reports the league default on a finished draft, so a post-hoc
-`curl .../draft/<id>` will happily tell you 30 when the draft actually ran at 90.
+**The timer is mutable, including mid-draft.** Don't build a flow that only works
+at 90 seconds. Design for 30 — if a decision has to be *made* after the clock
+starts, you have already lost — and treat anything longer as breathing room. Ours
+survived the switch precisely because nothing about it depended on having 90.
+
+**A finished draft tells you what it ended at, not what it ran under.** The draft
+object reports the timer's current value, so reading it afterwards returns 30 with
+no hint that most of the draft was played at 90. If you are reconstructing a draft
+from the API later — or inheriting someone's notes — that number is not evidence
+of what the room actually experienced.
 
 So read it live, at draft start, and write it down:
 
@@ -81,7 +87,7 @@ curl -s "https://api.sleeper.app/v1/draft/<draft_id>" | python3 -c \
   "import json,sys; print(json.load(sys.stdin)['settings']['pick_timer'], 'seconds')"
 ```
 
-Plan for 30. Enjoy 90 if you get it.
+and glance at it again if the pace of the room suddenly changes.
 
 ## The endpoints
 
@@ -168,7 +174,7 @@ you're only setting up one thing, set up the `/ws` feed.
 ## Checklist
 
 - [ ] `bun ff league` — rules are right
-- [ ] pick timer read **live** off the draft object (not from old notes)
+- [ ] pick timer read **live** off the draft object (not from old notes; it can change mid-draft)
 - [ ] `bun ff board --fresh` — projections are current
 - [ ] `bun ff mock --sims 300` — pick plan for your slot
 - [ ] server running; `curl -s localhost:4242/data` returns state

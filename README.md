@@ -177,9 +177,9 @@ you already discussed.
 
 Note that `ff board` and `ff mock` are **preparation**, not draft-night commands.
 Under the clock there is no time to run anything — the plan is already made, and
-the only live reads are the `/ws` feed and `/data`. Sleeper's default timer is 30
-seconds; a commissioner can raise it (ours ran at 90), but read it live off the
-draft object on the night rather than trusting notes — see
+the only live reads are the `/ws` feed and `/data`. Design for a 30-second timer
+even if yours is longer: a commissioner can change it, including mid-draft (ours
+ran at 90s and dropped to 30s in the bench rounds). See
 [docs/live-draft.md](docs/live-draft.md).
 
 > **On the served page:** we built it, and in the real draft essentially nobody
