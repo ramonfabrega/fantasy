@@ -126,13 +126,17 @@ export function rankRows(rows: ProjRow[]) {
     const best = (['RB', 'WR', 'TE'] as const).reduce((a, b) => (pts(b, idx[b]!) > pts(a, idx[a]!) ? b : a))
     idx[best]!++
   }
+  // One streaming slot of slack for the single-slot positions: 12 teams start 12
+  // QBs, so the 12th (index 11) is the last starter and the 13th (index 12) is
+  // what waivers hand you in a bye week. Same for TE/K/DEF. RB/WR baselines come
+  // out of the joint flex allocation above.
   const starterRepl: Record<string, number> = {
-    QB: pts('QB', 13),
+    QB: pts('QB', 12),
     RB: pts('RB', idx.RB!),
     WR: pts('WR', idx.WR!),
     TE: pts('TE', Math.max(idx.TE!, 12)),
-    K: pts('K', 11),
-    DEF: pts('DEF', 11),
+    K: pts('K', 12),
+    DEF: pts('DEF', 12),
   }
   benchRepl = {}
   for (const [pos, list] of Object.entries(byPos)) {
@@ -200,10 +204,13 @@ export function lineupPts(rows: ProjRow[]): number {
     const list = by(pos)
     for (let i = 0; i < n; i++) {
       const r = list[i]
+      const repl = benchRepl[pos] ?? 0
       if (r) {
         used.add(r.id)
-        total += r.pts
-      } else total += benchRepl[pos] ?? 0
+        // never worse than the empty slot: a starter below waiver level would be
+        // streamed, so drafting one is worth zero, not negative.
+        total += Math.max(r.pts, repl)
+      } else total += repl
     }
   }
   const flex = rows
