@@ -7,8 +7,20 @@ idea of fun is beating us.
 
 > **New agent in a fresh clone, start here.** Run `bun ff --llms` — the command
 > manifest is generated from the command definitions, so it is the one description
-> of this CLI that cannot go stale. Then `bun ff league` for the live rules.
-> Nothing needs auth except `ff odds`.
+> of this CLI that cannot go stale. Nothing needs auth except `ff odds`.
+>
+> **Then verify what you're pointed at, before computing anything:**
+>
+> ```sh
+> bun ff league    # is this the RIGHT league? name, scoring, roster slots
+> bun ff roster    # does "our team" resolve to a real roster?
+> ```
+>
+> Every number this repo produces is derived from that league's scoring and
+> roster construction, so if `ff league` is the wrong league, everything after it
+> is confidently wrong rather than obviously broken. If `ff roster` says *no such
+> owner*, `FF_USER_ID`/`FF_USERNAME` in `.env` aren't set to this user — fix that
+> before drafting anything. Don't work around either; say so and stop.
 >
 > Then read **`docs/live-draft.md`** — the draft-night runbook. It is the part of
 > this repo that actually won a draft, and it is not derivable from the code.
@@ -37,6 +49,94 @@ idea of fun is beating us.
 - **Claude decides** (draft picks, waiver bids, start/sit); tooling exists to make
   those decisions instant and fully informed. Read-only first; write automation
   (unofficial Sleeper GraphQL, needs Ramon's auth token) comes later with a trust ramp.
+
+## Operating manual
+
+The sequence, from a fresh clone to draft night. Steps 1–2 are one-time, 3–4 are
+the week before, 5 is the night itself.
+
+### 1. Point it at the league, and verify
+
+```sh
+bun install
+cp .env.example .env      # FF_LEAGUE_ID + FF_USER_ID + FF_USERNAME, all three
+bun ff league             # the engine's definition: scoring + roster slots
+bun ff roster             # proves "our team" resolves
+```
+
+Everything downstream — VORP baselines, flex allocation, FAAB sizing — derives
+from what `ff league` prints. Wrong league, and the output is confidently wrong
+rather than obviously broken. `ff roster` is what catches a half-filled `.env`.
+
+### 2. Homework (once, any time before the draft)
+
+```sh
+bun ff scout              # this league's past season: records, draft habits, FAAB
+bun ff study              # how that season was won: round ROI, waiver gold
+bun ff meta crawl         # harvest similar public leagues (slow; once)
+bun ff meta study         # what wins across the corpus, not just these 12
+bun ff meta adp           # corpus ADP — `ff profile` requires this
+bun ff profile            # per-opponent: who reaches, who waits, who hoards
+```
+
+Order matters — `meta study` and `meta adp` read what `meta crawl` harvested, and
+`ff profile` measures opponents against `meta adp`'s output. Run out of order and
+each will name the step that's missing.
+
+The point isn't the numbers, it's the priors: which rounds decide the season in
+*this* format, and which specific opponents take a QB early enough to matter.
+Write the conclusions into memory — they're needed on a night when there's no time
+to re-derive them.
+
+### 3. Build the board
+
+```sh
+bun ff board                     # rankings under this league's rules
+bun ff board --pos RB --available
+bun ff mock --sims 300           # simulate the rest of the draft → pick plan
+```
+
+`ff board` values every player two ways: VORP over the starter replacement (flex
+slots allocated jointly across the eligible positions, so RB and WR baselines move
+together) and half-weighted value over the draft-end waiver baseline. Tiers come
+from real gaps in the curve.
+
+`ff mock` is what to plan from — it returns, per pick, who is *likely to still be
+there*, which is the only question that matters at a given slot.
+
+### 4. Rehearse against a mock draft — do not skip
+
+```sh
+bun ff live --draft <mock_draft_id> --serve 4242
+```
+
+Start a mock on Sleeper, take the draft id from the URL, run the entire setup
+against it. This is where an ambiguous pick-call format or a too-slow watcher
+surfaces at zero cost. Our pick-call format exists because a rehearsal caught a
+name-only call selecting the wrong player in Sleeper's search.
+
+### 5. Draft night
+
+Full runbook: **`docs/live-draft.md`**. Read it before the draft, not during.
+
+The short version — `bun ff live --serve 4242` running, agent attached to
+`ws://localhost:4242/ws` via the `Monitor` tool (`ws` source, `persistent: true`),
+Sleeper's draft room open in a browser for the human to click.
+
+- **Call picks as `Player, POS TEAM` with two fallbacks.** Never a bare name.
+- **Snake picks come in pairs** — queue both at the first of each pair.
+- `ff board` and `ff mock` are *preparation*. Under the clock there is no time to
+  run anything; the only live reads are `/ws` and `/data`.
+- The served HTML page went essentially unused in the real draft. The server does
+  the work; the conversation is the interface.
+
+### 6. After
+
+```sh
+bun scripts/report/postdraft.ts && python3 scripts/report/build_report.py
+```
+
+Scores every roster in the league and renders a standalone power-rankings page.
 
 ## Stack
 

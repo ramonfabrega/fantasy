@@ -4,7 +4,7 @@ The runbook for draft night, written after using it for a real 15-round snake
 draft: 15 of 15 picks landed as called, no autopicks, no misclicks, through two
 commissioner pauses and one rewind.
 
-The README's [The flow](../README.md#the-flow) covers the week leading up to this.
+[`CLAUDE.md`](../CLAUDE.md#operating-manual) covers the week leading up to this.
 This page is only about the two hours themselves.
 
 ## The shape of it
@@ -27,8 +27,9 @@ Note what is *not* in that table: the served HTML page. See
 ## Setup, in order
 
 ```sh
-# 1. rules and board are fresh
+# 1. right league, right team, fresh board
 bun ff league
+bun ff roster
 bun ff board --fresh --top 60
 bun ff mock --sims 300          # the pick plan for your slot
 
@@ -173,7 +174,8 @@ you're only setting up one thing, set up the `/ws` feed.
 
 ## Checklist
 
-- [ ] `bun ff league` — rules are right
+- [ ] `bun ff league` — right league, right rules
+- [ ] `bun ff roster` — "our team" resolves to you (catches a half-filled `.env`)
 - [ ] pick timer read **live** off the draft object (not from old notes; it can change mid-draft)
 - [ ] `bun ff board --fresh` — projections are current
 - [ ] `bun ff mock --sims 300` — pick plan for your slot
