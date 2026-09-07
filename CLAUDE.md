@@ -7,16 +7,35 @@ idea of fun is beating us.
 
 > **New agent in a fresh clone, start here.** Run `bun ff --llms` — the command
 > manifest is generated from the command definitions, so it is the one description
-> of this CLI that cannot go stale. Then `bun ff league` for the live rules.
-> Nothing needs auth except `ff odds`.
+> of this CLI that cannot go stale. Nothing needs auth except `ff odds`.
 >
-> **If this is a fork, not Ramon's checkout:** everything below is *our* team's
-> doctrine and league — rewrite it as yours. Set `FF_LEAGUE_ID`, `FF_USER_ID`, and
-> `FF_USERNAME` in `.env` (see `.env.example`) and every command retargets. The
-> `.md` files referenced in session memory below (`sleeper-league.md`,
-> `league-meta-2025.md`, `opponent-book.md`) are **not in this repo** — they live in
-> Ramon's Claude session memory. Don't go looking for them; regenerate the
-> equivalents for your own league with `ff scout`, `ff study`, and `ff profile`.
+> **Then verify what you're pointed at, before computing anything:**
+>
+> ```sh
+> bun ff league    # is this the RIGHT league? name, scoring, roster slots
+> bun ff roster    # does "our team" resolve to a real roster?
+> ```
+>
+> Every number this repo produces is derived from that league's scoring and
+> roster construction, so if `ff league` is the wrong league, everything after it
+> is confidently wrong rather than obviously broken. If `ff roster` says *no such
+> owner*, `FF_USER_ID`/`FF_USERNAME` in `.env` aren't set to this user — fix that
+> before drafting anything. Don't work around either; say so and stop.
+>
+> Then read **`docs/live-draft.md`** — the draft-night runbook. It is the part of
+> this repo that actually won a draft, and it is not derivable from the code.
+>
+> **The league is whatever `bun ff league` prints.** Identity lives in `.env`
+> (`FF_LEAGUE_ID`, `FF_USER_ID`, `FF_USERNAME`), not in this file — never hardcode
+> a league id anywhere.
+>
+> **If this is a fork, not Ramon's checkout:** everything above the fold —
+> Doctrine, Stack, CLI — is general and worth keeping. Everything under
+> *The Ballers instance* at the bottom is ours: delete it and write your own. The
+> `.md` files it references (`sleeper-league.md`, `league-meta-2025.md`,
+> `opponent-book.md`) are **not in this repo** — they live in Ramon's Claude
+> session memory. Don't go looking for them; regenerate the equivalents for your
+> own league with `ff scout`, `ff study`, and `ff profile`.
 
 ## Doctrine
 
@@ -31,13 +50,93 @@ idea of fun is beating us.
   those decisions instant and fully informed. Read-only first; write automation
   (unofficial Sleeper GraphQL, needs Ramon's auth token) comes later with a trust ramp.
 
-## League facts (2026)
+## Operating manual
 
-Half-PPR, 12 teams, snake draft (15 rds, **30s pick timer**, autopick on), roster
-1QB/2RB/2WR/1TE/1FLEX/1K/1DEF + 6 BN, FAAB $100 clearing Wed, playoffs top-6 wk 15,
-median match ON (two W/L per week — floor/consistency matters), IR is COVID-only
-(useless), redraft. IDs and deeper notes live in session memory (`sleeper-league.md`).
-League history: previous_league_id chain → 2025 season is minable (`ff scout`).
+The sequence, from a fresh clone to draft night. Steps 1–2 are one-time, 3–4 are
+the week before, 5 is the night itself.
+
+### 1. Point it at the league, and verify
+
+```sh
+bun install
+cp .env.example .env      # FF_LEAGUE_ID + FF_USER_ID + FF_USERNAME, all three
+bun ff league             # the engine's definition: scoring + roster slots
+bun ff roster             # proves "our team" resolves
+```
+
+Everything downstream — VORP baselines, flex allocation, FAAB sizing — derives
+from what `ff league` prints. Wrong league, and the output is confidently wrong
+rather than obviously broken. `ff roster` is what catches a half-filled `.env`.
+
+### 2. Homework (once, any time before the draft)
+
+```sh
+bun ff scout              # this league's past season: records, draft habits, FAAB
+bun ff study              # how that season was won: round ROI, waiver gold
+bun ff meta crawl         # harvest similar public leagues (slow; once)
+bun ff meta study         # what wins across the corpus, not just these 12
+bun ff meta adp           # corpus ADP — `ff profile` requires this
+bun ff profile            # per-opponent: who reaches, who waits, who hoards
+```
+
+Order matters — `meta study` and `meta adp` read what `meta crawl` harvested, and
+`ff profile` measures opponents against `meta adp`'s output. Run out of order and
+each will name the step that's missing.
+
+The point isn't the numbers, it's the priors: which rounds decide the season in
+*this* format, and which specific opponents take a QB early enough to matter.
+Write the conclusions into memory — they're needed on a night when there's no time
+to re-derive them.
+
+### 3. Build the board
+
+```sh
+bun ff board                     # rankings under this league's rules
+bun ff board --pos RB --available
+bun ff mock --sims 300           # simulate the rest of the draft → pick plan
+```
+
+`ff board` values every player two ways: VORP over the starter replacement (flex
+slots allocated jointly across the eligible positions, so RB and WR baselines move
+together) and half-weighted value over the draft-end waiver baseline. Tiers come
+from real gaps in the curve.
+
+`ff mock` is what to plan from — it returns, per pick, who is *likely to still be
+there*, which is the only question that matters at a given slot.
+
+### 4. Rehearse against a mock draft — do not skip
+
+```sh
+bun ff live --draft <mock_draft_id> --serve 4242
+```
+
+Start a mock on Sleeper, take the draft id from the URL, run the entire setup
+against it. This is where an ambiguous pick-call format or a too-slow watcher
+surfaces at zero cost. Our pick-call format exists because a rehearsal caught a
+name-only call selecting the wrong player in Sleeper's search.
+
+### 5. Draft night
+
+Full runbook: **`docs/live-draft.md`**. Read it before the draft, not during.
+
+The short version — `bun ff live --serve 4242` running, agent attached to
+`ws://localhost:4242/ws` via the `Monitor` tool (`ws` source, `persistent: true`),
+Sleeper's draft room open in a browser for the human to click.
+
+- **Call picks as `Player, POS TEAM` with two fallbacks.** Never a bare name.
+- **Snake picks come in pairs** — queue both at the first of each pair.
+- `ff board` and `ff mock` are *preparation*. Under the clock there is no time to
+  run anything; the only live reads are `/ws` and `/data`.
+- The served HTML page went essentially unused in the real draft. The server does
+  the work; the conversation is the interface.
+
+### 6. After
+
+```sh
+bun scripts/report/postdraft.ts && python3 scripts/report/build_report.py
+```
+
+Scores every roster in the league and renders a standalone power-rankings page.
 
 ## Stack
 
@@ -49,15 +148,21 @@ Prefer Bun natives (`Bun.file`, `bun:sqlite`, `Bun.serve`) over npm equivalents.
 
 `bun ff <cmd>` (or `bun src/ff.ts <cmd>`): `state`, `league`, `members`, `roster
 [owner]`, `draft`, `picks`, `trending [add|drop]`, `player <query>`, `matchups
-[week]`, `scout [--league id]`, `study`, `value`, `odds`, `meta crawl|study`,
-`profile`, `board`, `mock`, `live [--serve port]`. All read-only. Sleeper (`api.sleeper.app/v1`) needs no auth; only
+[week]`, `scout [--league id]`, `study`, `value`, `odds`, `meta crawl|study|adp`,
+`profile`, `board`, `mock`, `live [--serve port] [--draft id]`. All read-only.
+Post-draft league report: `scripts/report/` (`postdraft.ts` then `build_report.py`). Sleeper (`api.sleeper.app/v1`) needs no auth; only
 `odds` needs a key. Player DB (~5MB) caches to `.cache/players.json` for 24h —
 Sleeper asks max 1 fetch/day; odds cache 6h.
 
 League identity is env-configurable (`FF_LEAGUE_ID`, `FF_USER_ID`, `FF_USERNAME`
 in `src/sleeper.ts`, defaulting to ours) so the repo works as a base for someone
-else's league — see `.env.example` and README. Keep it that way: no new hardcoded
-league IDs.
+else's league — see `.env.example` and README. Keep it that way: **no new
+hardcoded league IDs, and no new hardcoded league SHAPE.** Scoring comes from
+`scoring_settings`; teams/starters/flex come from `leagueShape()` in
+`src/sleeper.ts` (`roster_positions` + `total_rosters`). If you need "12 teams"
+or "2 RB" in a calculation, take it from the `Shape`, never a literal — a
+hardcoded shape produces confidently wrong numbers in someone else's league,
+which is worse than failing.
 
 ## Roadmap
 
@@ -77,14 +182,38 @@ league IDs.
    gap-based tiers; recommender applies doctrine as need multipliers (late QB, one
    TE, K/DEF only in the last two rounds, flagged players discounted not hidden).
 7. ✅ Live draft assistant (`ff live [--serve port]`) + planner (`ff mock`): polls picks,
-   recomputes best-available for OUR next pick with gone-by-then odds; the served page
-   sits beside the Sleeper draft room. Draft-day flow: Ramon clicks in sleeper.com,
-   Claude calls every pick from this board.
+   recomputes best-available for OUR next pick with gone-by-then odds. **Used for real
+   on 2026-09-02: 15/15 picks landed as called, no autopicks, through two pauses and a
+   rewind.** What carried it was the `/ws` agent feed + `/data`, not the served page —
+   the conversation was the interface. Runbook: `docs/live-draft.md`.
+7b. ✅ Post-draft league report (`scripts/report/`): every roster scored under our rules,
+   rendered as a standalone power-rankings page. Ramon wants this weekly in-season.
 8. In-season loop: waiver evaluator + FAAB sizing, start/sit, Sunday inactives seatbelt
 9. Write automation (FA sniping, lineup fixes) after trust ramp. Realtime findings
    (2026-09-02): Sleeper is Phoenix; data socket `wss://gateway.sleeper.com/socket/websocket`
    needs the app session token (`token=` query param), topics `draft:<id>`, `league:<id>`,
    `user:<id>`, `score:nfl`. No anonymous stream — the 1s REST poll in `ff live` is the feed.
 
-A session cron (twice daily) watches for draft scheduling + Ramon's roster
-assignment; re-arm it if the session restarts (7-day expiry).
+## The Ballers instance (delete on fork)
+
+Everything above is general — doctrine, stack, CLI, roadmap. Everything below is
+our specific league, and is what a fork replaces.
+
+### League facts (2026)
+
+Half-PPR, 12 teams, snake draft (15 rds, **pick timer is mutable: configured 30s,
+raised to 90s on 2026 draft morning, dropped back to 30s mid-draft in the bench
+rounds** — a finished draft object reports what it ended at, not what it ran
+under, so read it live at draft start), autopick on, roster
+1QB/2RB/2WR/1TE/1FLEX/1K/1DEF + 6 BN, FAAB $100 clearing Wed, playoffs top-6 wk 15,
+median match ON (two W/L per week — floor/consistency matters), IR is COVID-only
+(useless), redraft. IDs and deeper notes live in session memory (`sleeper-league.md`).
+League history: previous_league_id chain → 2025 season is minable (`ff scout`).
+
+### Session memory (not in this repo)
+
+Deeper notes live in Ramon's Claude session memory, not here: `sleeper-league.md`
+(IDs), `league-meta-2025.md` (how last season was won across 1,886 similar
+leagues), `opponent-book.md` (per-Baller scouting), `draft-2026-result.md` (our
+15 picks and how the room drafted). A fork regenerates the equivalents with
+`ff scout`, `ff study`, `ff meta crawl|study|adp`, and `ff profile`.

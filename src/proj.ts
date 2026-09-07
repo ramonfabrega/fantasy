@@ -7,14 +7,25 @@
 // Refreshed by Sleeper roughly daily; we cache 1h (`--fresh` to bypass).
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { api, LEAGUE_ID, playerName, players } from './sleeper'
+import { api, LEAGUE_ID, playerName, players, leagueShape, DEFAULT_SHAPE, type Shape } from './sleeper'
 import { FANTASY_POS, scoreStats, seasonStats } from './value'
 
-// Replacement = roughly the last player drafted at each position in a 12-team,
-// 15-round draft (what's left on waivers), NOT the last starter (`ff value`
-// uses starter-level ranks). Bench RB/WR carry real value — injuries, flex,
-// trade chips — and a starter-level baseline zeroes them out by round 7.
-export const DRAFT_REPL: Record<string, number> = { QB: 16, RB: 44, WR: 44, TE: 16, K: 12, DEF: 12 }
+// Replacement = roughly the last player drafted at each position, NOT the last
+// starter (`ff value` uses starter-level ranks). Bench RB/WR carry real value —
+// injuries, flex, trade chips — and a starter-level baseline zeroes them out by
+// round 7. Calibrated on a 12-team, 15-round draft and scaled to the actual
+// league below, so a 10- or 14-team league gets its own waiver line.
+const BASE_REPL: Record<string, number> = { QB: 16, RB: 44, WR: 44, TE: 16, K: 12, DEF: 12 }
+const BASE_TEAMS = 12
+const BASE_ROUNDS = 15
+
+/** Draft-end replacement rank per position, scaled from the 12x15 calibration. */
+function draftRepl(shape: Shape): Record<string, number> {
+  const scale = (shape.teams * shape.rounds) / (BASE_TEAMS * BASE_ROUNDS)
+  const out: Record<string, number> = {}
+  for (const [pos, n] of Object.entries(BASE_REPL)) out[pos] = Math.max(shape.teams, Math.round(n * scale))
+  return out
+}
 
 const CACHE_DIR = join(import.meta.dir, '../.cache')
 const PROJ_TTL_MS = 60 * 60 * 1000
@@ -99,45 +110,50 @@ export async function buildBoard(season: string, fresh = false): Promise<ProjRow
       edge: null,
     })
   }
-  rankRows(rows)
+  rankRows(rows, leagueShape(league))
   boardCache = { key, rows }
   return rows
 }
 
 /**
  * Value, two-layered:
- *  - vorp: pts over the STARTER replacement. 12 teams × (1QB/2RB/2WR/1TE/1FLEX)
- *    with the 12 flex slots allocated jointly to the best remaining RB/WR/TE, so
- *    RB and WR baselines move together instead of each position pretending the
- *    flex doesn't exist. QB/TE/K/DEF get one streaming slot of slack.
+ *  - vorp: pts over the STARTER replacement, derived from the league's own roster
+ *    (teams × each starting slot), with every flex slot in the league allocated
+ *    jointly to the best remaining eligible position, so RB and WR baselines move
+ *    together instead of each position pretending the flex doesn't exist. Each
+ *    position's baseline sits one past its last starter — the streaming slot.
  *  - bench: pts over the draft-END replacement (what waivers look like).
  *  - val = max(vorp, bench/2): starters are valued as starters; bench fliers keep
  *    a positive, half-weighted value so late rounds still rank by upside.
  * Also assigns gap-based tiers, positional and overall rank, ADP edge.
  */
-export function rankRows(rows: ProjRow[]) {
+export function rankRows(rows: ProjRow[], shape: Shape = SHAPE) {
+  SHAPE = shape
+  STARTERS = shape.starters
+  FLEX = shape.flexPos
   const byPos: Record<string, ProjRow[]> = {}
   for (const r of rows) (byPos[r.pos] ??= []).push(r)
   for (const list of Object.values(byPos)) list.sort((a, b) => b.pts - a.pts)
   const pts = (pos: string, i: number) => byPos[pos]?.[i]?.pts ?? 0
-  // flex allocation: next-in-line index per position after the fixed starters
-  const idx: Record<string, number> = { RB: 24, WR: 24, TE: 12 }
-  for (let f = 0; f < 12; f++) {
-    const best = (['RB', 'WR', 'TE'] as const).reduce((a, b) => (pts(b, idx[b]!) > pts(a, idx[a]!) ? b : a))
-    idx[best]!++
+  // Index of the first NON-starter at each position across the whole league:
+  // 12 teams starting 2 RB means RBs 1-24 start, so index 24 (the 25th RB) is
+  // the replacement — one past the last starter, i.e. the streaming slot.
+  const idx: Record<string, number> = {}
+  for (const pos of Object.keys(byPos)) idx[pos] = (shape.starters[pos] ?? 0) * shape.teams
+  // Flex allocation: hand each flex slot in the league to whichever eligible
+  // position has the best player left, so their baselines move together.
+  const pool = shape.flexPos.filter((p) => byPos[p]?.length)
+  for (let f = 0; f < shape.flexSlots * shape.teams && pool.length; f++) {
+    const best = pool.reduce((a, b) => (pts(b, idx[b] ?? 0) > pts(a, idx[a] ?? 0) ? b : a))
+    idx[best] = (idx[best] ?? 0) + 1
   }
-  const starterRepl: Record<string, number> = {
-    QB: pts('QB', 13),
-    RB: pts('RB', idx.RB!),
-    WR: pts('WR', idx.WR!),
-    TE: pts('TE', Math.max(idx.TE!, 12)),
-    K: pts('K', 11),
-    DEF: pts('DEF', 11),
-  }
+  const starterRepl: Record<string, number> = {}
+  for (const pos of Object.keys(byPos)) starterRepl[pos] = pts(pos, idx[pos] ?? 0)
+  const DRAFT_REPL = draftRepl(shape)
   benchRepl = {}
   for (const [pos, list] of Object.entries(byPos)) {
     const sRepl = starterRepl[pos] ?? 0
-    const bRepl = list[(DRAFT_REPL[pos] ?? 13) - 1]?.pts ?? 0
+    const bRepl = list[(DRAFT_REPL[pos] ?? shape.teams) - 1]?.pts ?? 0
     benchRepl[pos] = bRepl
     let tier = 1
     list.forEach((r, i) => {
@@ -155,7 +171,9 @@ export function rankRows(rows: ProjRow[]) {
     r.ovr_rank = i + 1
     r.edge = r.adp === null ? null : Math.round(r.adp - r.ovr_rank)
   })
-  return { rows, starterRepl, flex: { RB: idx.RB! - 24, WR: idx.WR! - 24, TE: idx.TE! - 12 } }
+  const flex: Record<string, number> = {}
+  for (const pos of shape.flexPos) flex[pos] = (idx[pos] ?? 0) - (shape.starters[pos] ?? 0) * shape.teams
+  return { rows, starterRepl, flex }
 }
 
 // ---------------------------------------------------------------- draft math
@@ -181,8 +199,15 @@ export function goneProb(adp: number | null, at: number): number {
 
 // --------------------------------------------------------- recommendation
 
-export const STARTERS: Record<string, number> = { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 }
-export const FLEX = ['RB', 'WR', 'TE']
+/**
+ * The league's starting slots and flex-eligible positions. These default to a
+ * standard 12-team build and are REPLACED by the real league's construction as
+ * soon as `rankRows` runs (i.e. after any `buildBoard`), the same way
+ * `benchRepl` is populated. Read them after awaiting a board, never before.
+ */
+export let SHAPE: Shape = DEFAULT_SHAPE
+export let STARTERS: Record<string, number> = SHAPE.starters
+export let FLEX: string[] = SHAPE.flexPos
 
 /** Draft-end (waiver) replacement pts per position; set by rankRows. */
 export let benchRepl: Record<string, number> = {}
@@ -200,16 +225,25 @@ export function lineupPts(rows: ProjRow[]): number {
     const list = by(pos)
     for (let i = 0; i < n; i++) {
       const r = list[i]
+      const repl = benchRepl[pos] ?? 0
       if (r) {
         used.add(r.id)
-        total += r.pts
-      } else total += benchRepl[pos] ?? 0
+        // never worse than the empty slot: a starter below waiver level would be
+        // streamed, so drafting one is worth zero, not negative.
+        total += Math.max(r.pts, repl)
+      } else total += repl
     }
   }
-  const flex = rows
+  // every flex slot the league starts, best eligible player first
+  const flexRepl = FLEX.length ? Math.max(...FLEX.map((p) => benchRepl[p] ?? 0)) : 0
+  const bench = rows
     .filter((r) => FLEX.includes(r.pos) && !used.has(r.id))
-    .sort((a, b) => b.pts - a.pts)[0]
-  total += flex ? flex.pts : Math.max(...FLEX.map((p) => benchRepl[p] ?? 0))
+    .sort((a, b) => b.pts - a.pts)
+  for (let i = 0; i < SHAPE.flexSlots; i++) {
+    const r = bench[i]
+    if (r) used.add(r.id)
+    total += r ? Math.max(r.pts, flexRepl) : flexRepl
+  }
   return total
 }
 
@@ -246,8 +280,8 @@ export function recommend(
   ours: ProjRow[],
   at: number,
   at2: number | null,
-  teams = 12,
-  rounds = 15,
+  teams = SHAPE.teams,
+  rounds = SHAPE.rounds,
 ): Rec[] {
   const round = Math.ceil(at / teams)
   const owned = countPos(ours)

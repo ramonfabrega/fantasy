@@ -5,9 +5,21 @@ import { join } from 'node:path'
 const BASE = 'https://api.sleeper.app/v1'
 
 // The Ballers Fantasy League, 2026. Override via env for other leagues/seasons.
-export const LEAGUE_ID = process.env.FF_LEAGUE_ID ?? '1385663706213388288'
-export const USER_ID = process.env.FF_USER_ID ?? '1385762763669794816' // ramonfabrega
-export const USERNAME = process.env.FF_USERNAME ?? 'ramonfabrega'
+//
+// `.env.example` ships these blank, so a copied .env sets them to "" — treat an
+// empty or whitespace value as unset, or every default silently becomes "".
+const env = (k: string) => {
+  const v = process.env[k]
+  return v && v.trim() ? v.trim() : undefined
+}
+
+export const LEAGUE_ID = env('FF_LEAGUE_ID') ?? '1385663706213388288'
+export const USER_ID = env('FF_USER_ID') ?? '1385762763669794816' // ramonfabrega
+export const USERNAME = env('FF_USERNAME') ?? 'ramonfabrega'
+
+/** Someone pointed this at their own league but left the identity as ours. */
+export const FOREIGN_LEAGUE =
+  env('FF_LEAGUE_ID') !== undefined && env('FF_USER_ID') === undefined && env('FF_USERNAME') === undefined
 
 export async function api<T = any>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
@@ -52,4 +64,63 @@ export function playerName(p?: Player): string {
 export async function leagueUsers(leagueId: string) {
   const users = await api<any[]>(`/league/${leagueId}/users`)
   return Object.fromEntries(users.map((u) => [u.user_id, u]))
+}
+
+// --------------------------------------------------------------- league shape
+//
+// Every valuation in this repo is calibrated to a league's roster construction,
+// so read it from the league rather than assuming one. Lives here because both
+// the projection board and the historical value engine need it.
+
+/** Which real positions each Sleeper flex slot can be filled from. */
+const FLEX_KINDS: Record<string, string[]> = {
+  FLEX: ['RB', 'WR', 'TE'],
+  WRRB_FLEX: ['RB', 'WR'],
+  REC_FLEX: ['WR', 'TE'],
+  SUPER_FLEX: ['QB', 'RB', 'WR', 'TE'],
+}
+const NON_STARTER = new Set(['BN', 'IR', 'TAXI'])
+
+export type Shape = {
+  teams: number
+  starters: Record<string, number>
+  flexSlots: number
+  flexPos: string[]
+  rounds: number
+}
+
+/** Default shape (12-team, 1QB/2RB/2WR/1TE/FLEX/K/DEF) used until a league is read. */
+export const DEFAULT_SHAPE: Shape = {
+  teams: 12,
+  starters: { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 },
+  flexSlots: 1,
+  flexPos: ['RB', 'WR', 'TE'],
+  rounds: 15,
+}
+
+/**
+ * Read a league's own roster construction. Handles any starter mix and
+ * Sleeper's flex variants, including SUPER_FLEX (2QB) leagues.
+ */
+export function leagueShape(league: any): Shape {
+  const rp: string[] = league?.roster_positions ?? []
+  if (!rp.length) return { ...DEFAULT_SHAPE, teams: league?.total_rosters ?? DEFAULT_SHAPE.teams }
+  const starters: Record<string, number> = {}
+  const flexPos = new Set<string>()
+  let flexSlots = 0
+  for (const slot of rp) {
+    if (NON_STARTER.has(slot)) continue
+    const kinds = FLEX_KINDS[slot]
+    if (kinds) {
+      flexSlots++
+      for (const k of kinds) flexPos.add(k)
+    } else starters[slot] = (starters[slot] ?? 0) + 1
+  }
+  return {
+    teams: league?.total_rosters ?? DEFAULT_SHAPE.teams,
+    starters,
+    flexSlots,
+    flexPos: [...flexPos],
+    rounds: rp.length,
+  }
 }
