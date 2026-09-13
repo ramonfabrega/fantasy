@@ -243,6 +243,49 @@ export function buildAlerts(
   return alerts
 }
 
+/** An odds kickoff as its US-Eastern calendar date, which is how the NFL — and
+ * Sleeper's schedule — dates a game. A Sunday night kickoff is 00:20Z Monday. */
+const etDate = (iso: string) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso))
+
+/**
+ * Join the odds board to this week's games.
+ *
+ * The board runs the whole season ahead, and the obvious join — same two teams —
+ * is wrong in a way that hides: divisional opponents play TWICE, so a November
+ * `PHI@WAS` matches week 1's `WAS@PHI` on pairing alone and, arriving later in
+ * the list, overwrites it. That silently moved every Washington and Philadelphia
+ * deadline three months into the future, which does not look like a bug in the
+ * output — it looks like a quiet watcher. Pairing AND date, or nothing.
+ */
+export function matchOdds(
+  games: { game: string; kickoff: string; implied?: Record<string, number> }[],
+  byTeam: Record<string, { opp: string; date: string }>,
+) {
+  const kickoffOf: Record<string, string> = {}
+  const impliedOf: Record<string, number> = {}
+  for (const g of games) {
+    const [away, home] = String(g.game).split('@')
+    for (const [t, opp] of [
+      [away, home],
+      [home, away],
+    ]) {
+      const sched = byTeam[t]
+      if (!sched || sched.opp !== opp) continue
+      if (sched.date && etDate(g.kickoff) !== sched.date) continue
+      kickoffOf[t] = g.kickoff
+      const v = g.implied?.[t]
+      if (typeof v === 'number') impliedOf[t] = v
+    }
+  }
+  return { kickoffOf, impliedOf }
+}
+
 export async function seatbelt(opts: { week?: number; owner?: string } = {}) {
   const state = await api<any>('/state/nfl')
   const season: string = state.season
@@ -275,23 +318,7 @@ export async function seatbelt(opts: { week?: number; owner?: string } = {}) {
     byTeam[g.home] = { ...g, opp: g.away, side: 'vs' }
     byTeam[g.away] = { ...g, opp: g.home, side: '@' }
   }
-  // The odds board runs weeks ahead, so a game only counts if its pairing is
-  // THIS week's pairing for that team. Matching on team alone silently picks up
-  // a January game and reports it as the next lock.
-  const kickoffOf: Record<string, string> = {}
-  const impliedOf: Record<string, number> = {}
-  for (const g of (odds as any).games ?? []) {
-    const [away, home] = String(g.game).split('@')
-    for (const [t, opp] of [
-      [away, home],
-      [home, away],
-    ]) {
-      if (byTeam[t]?.opp !== opp) continue
-      kickoffOf[t] = g.kickoff
-      const v = (g.implied ?? {})[t]
-      if (typeof v === 'number') impliedOf[t] = v
-    }
-  }
+  const { kickoffOf, impliedOf } = matchOdds((odds as any).games ?? [], byTeam)
 
   const proj: Record<string, any> = {}
   for (const r of projRaw) proj[r.player_id] = r

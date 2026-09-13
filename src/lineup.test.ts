@@ -4,7 +4,7 @@
 // lineup and a bench, does it (a) notice, (b) pick a legal replacement, and
 // (c) stay quiet when there is nothing to be done.
 import { expect, test, describe } from 'bun:test'
-import { buildAlerts, optimize, type Spot } from './lineup'
+import { buildAlerts, matchOdds, optimize, type Spot } from './lineup'
 
 const SLOTS = ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF']
 
@@ -146,5 +146,43 @@ describe('seatbelt', () => {
     expect(best[6]!.name).toBe('FLEX-locked')
     // ...and the huge bench RB lands in a changeable RB slot instead.
     expect([best[1]?.name, best[2]?.name]).toContain('RB-huge')
+  })
+
+  test('the odds join survives a divisional rematch', () => {
+    // WAS and PHI meet twice. Week 1 is WAS@PHI on Sep 13; the same two teams
+    // meet again as PHI@WAS on Nov 2. Joining on the pairing alone matches both
+    // and the later row wins, pushing every deadline three months out.
+    const byTeam = {
+      WAS: { opp: 'PHI', date: '2026-09-13' },
+      PHI: { opp: 'WAS', date: '2026-09-13' },
+    }
+    const { kickoffOf, impliedOf } = matchOdds(
+      [
+        {
+          game: 'WAS@PHI',
+          kickoff: '2026-09-13T20:25:00Z',
+          implied: { PHI: 24.8, WAS: 19.3 },
+        },
+        {
+          game: 'PHI@WAS',
+          kickoff: '2026-11-02T18:00:00Z',
+          implied: { WAS: 22.3, PHI: 24.3 },
+        },
+      ],
+      byTeam,
+    )
+    expect(kickoffOf.WAS).toBe('2026-09-13T20:25:00Z')
+    expect(kickoffOf.PHI).toBe('2026-09-13T20:25:00Z')
+    expect(impliedOf.WAS).toBe(19.3)
+    expect(impliedOf.PHI).toBe(24.8)
+  })
+
+  test('a Sunday night kickoff is dated by its Eastern day, not UTC', () => {
+    // 00:20Z Monday is still Sunday night football to the NFL and to Sleeper.
+    const { kickoffOf } = matchOdds(
+      [{ game: 'DAL@NYG', kickoff: '2026-09-14T00:20:00Z', implied: { NYG: 22.5 } }],
+      { NYG: { opp: 'DAL', date: '2026-09-13' }, DAL: { opp: 'NYG', date: '2026-09-13' } },
+    )
+    expect(kickoffOf.NYG).toBe('2026-09-14T00:20:00Z')
   })
 })
