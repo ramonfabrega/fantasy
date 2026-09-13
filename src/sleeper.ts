@@ -73,7 +73,7 @@ export async function leagueUsers(leagueId: string) {
 // the projection board and the historical value engine need it.
 
 /** Which real positions each Sleeper flex slot can be filled from. */
-const FLEX_KINDS: Record<string, string[]> = {
+export const FLEX_KINDS: Record<string, string[]> = {
   FLEX: ['RB', 'WR', 'TE'],
   WRRB_FLEX: ['RB', 'WR'],
   REC_FLEX: ['WR', 'TE'],

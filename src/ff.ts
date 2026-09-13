@@ -17,6 +17,7 @@ import { oddsBoard } from './odds'
 import { buildBoard, flag } from './proj'
 import { draftState, serveLive } from './draft'
 import { mockDraft } from './mock'
+import { seatbelt } from './lineup'
 
 const FANTASY_POS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
 
@@ -292,6 +293,22 @@ cli.command('matchups', {
         .map((m) => `${ownerOf[m.roster_id]} ${m.points ?? 0}`)
         .join(' vs '),
     )
+  },
+})
+
+cli.command('seatbelt', {
+  description:
+    'Gameday lineup check: starters who are Out/inactive in games that have not locked, plus any bench upgrade',
+  options: z.object({
+    week: z.coerce.number().optional().describe('NFL week (default: current)'),
+    owner: z.string().optional().describe('Team to check (default: ours)'),
+    full: z.boolean().optional().describe('Include every starter and bench row, not just alerts'),
+  }),
+  async run({ options }) {
+    const s = await seatbelt({ week: options.week, owner: options.owner })
+    if (options.full) return s
+    const { starters, bench, ...rest } = s
+    return rest
   },
 })
 

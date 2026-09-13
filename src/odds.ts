@@ -29,9 +29,34 @@ const median = (xs: number[]) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
+/**
+ * The API key, from `ODDS_API_KEY` or, failing that, by running
+ * `ODDS_API_KEY_CMD` and taking its first line. The command form exists so the
+ * key can live in a secret manager (`passage show tokens/the-odds/api-key`,
+ * `op read ...`) instead of in plaintext on disk.
+ */
+export async function oddsKey(): Promise<string> {
+  const direct = process.env.ODDS_API_KEY?.trim()
+  if (direct) return direct
+  const cmd = process.env.ODDS_API_KEY_CMD?.trim()
+  if (!cmd)
+    throw new Error(
+      'no odds key: set ODDS_API_KEY, or ODDS_API_KEY_CMD to a command that prints one',
+    )
+  const proc = Bun.spawn(['sh', '-c', cmd], { stdout: 'pipe', stderr: 'pipe' })
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  if ((await proc.exited) !== 0)
+    throw new Error(`ODDS_API_KEY_CMD failed: ${err.trim() || `exit ${proc.exitCode}`}`)
+  const key = out.split('\n')[0]?.trim()
+  if (!key) throw new Error('ODDS_API_KEY_CMD printed nothing')
+  return key
+}
+
 async function fetchOdds(): Promise<{ games: any[]; quota_remaining: number }> {
-  const key = process.env.ODDS_API_KEY
-  if (!key) throw new Error('ODDS_API_KEY missing from .env')
+  const key = await oddsKey()
   const res = await fetch(
     `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${key}&regions=us&markets=spreads,totals&oddsFormat=american`,
   )
@@ -42,13 +67,18 @@ async function fetchOdds(): Promise<{ games: any[]; quota_remaining: number }> {
   }
 }
 
-export async function oddsBoard(fresh = false) {
+export async function oddsBoard(fresh = false, cacheOnly = false) {
   mkdirSync(CACHE_DIR, { recursive: true })
   const file = Bun.file(join(CACHE_DIR, 'odds.json'))
   let data: { games: any[]; quota_remaining: number }
   if (!fresh && (await file.exists()) && Date.now() - file.lastModified < TTL_MS)
     data = await file.json()
-  else {
+  else if (cacheOnly) {
+    // Gameday callers read the market as a bonus, never at the cost of a
+    // credit or a stall. Stale-but-present beats a fetch; absent is fine.
+    if (!(await file.exists())) return { quota_remaining: -1, games: [] }
+    data = await file.json()
+  } else {
     data = await fetchOdds()
     await Bun.write(file, JSON.stringify(data))
   }

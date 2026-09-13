@@ -140,6 +140,23 @@ bun scripts/report/postdraft.ts && python3 scripts/report/build_report.py
 
 Scores every roster in the league and renders a standalone power-rankings page.
 
+### 7. Every gameday
+
+```sh
+bun ff seatbelt                        # anything to fix before kickoff?
+bun scripts/seatbelt-agent.sh up       # ...or have it watch for you, every 15 min
+```
+
+`ff seatbelt` answers one question: is there a starter I can still change who is
+not going to play. `verdict: ACT` means a real mistake is on the board and
+`apply` lists the swaps; `WATCH` is a judgement call; `CLEAR` means go do
+something else. It derives every deadline from real kickoff timestamps, so it is
+correct for London games, Saturday slates and flexed starts without being told.
+
+The agent notifies macOS and, if `FF_SEATBELT_HOOK` is set, pipes the same line
+into whatever command you name — that is the phone path. Check on it with
+`scripts/seatbelt-agent.sh status`, remove it with `down`.
+
 ## Stack
 
 Bun + TypeScript + [incur](https://github.com/wevm/incur) (agent-first CLI framework;
@@ -151,7 +168,7 @@ Prefer Bun natives (`Bun.file`, `bun:sqlite`, `Bun.serve`) over npm equivalents.
 `bun ff <cmd>` (or `bun src/ff.ts <cmd>`): `state`, `league`, `members`, `roster
 [owner]`, `draft`, `picks`, `trending [add|drop]`, `player <query>`, `matchups
 [week]`, `scout [--league id]`, `study`, `value`, `odds`, `meta crawl|study|adp`,
-`profile`, `board`, `mock`, `live [--serve port] [--draft id]`. All read-only.
+`profile`, `board`, `mock`, `live [--serve port] [--draft id]`, `seatbelt`. All read-only.
 Post-draft league report: `scripts/report/` (`postdraft.ts` then `build_report.py`).
 Sleeper (`api.sleeper.app/v1`) needs no auth; only `odds` needs a key. Player DB
 (~5MB) caches to `.cache/players.json` for 24h — Sleeper asks max 1 fetch/day;
@@ -193,12 +210,23 @@ which is worse than failing.
    not the served page. Runbook: `docs/live-draft.md`.
 8. ✅ **Post-draft league report** (`scripts/report/`) — every roster scored under
    the league's rules, rendered as a standalone power-rankings page.
+9. ✅ **Gameday seatbelt** (`ff seatbelt`) — the Sunday check: starters who are
+   Out/inactive in games that have not locked yet, plus any bench upgrade, plus
+   the literal click-list (`apply`) to fix it. Status comes from the weekly
+   projections feed, never `.cache/players.json` — the player DB is 24h-cached
+   because Sleeper asks for one fetch a day, which on a gameday makes it exactly
+   as stale as the thing you are trying to catch. Lock state is Sleeper's own
+   `pre_game`, so it cannot disagree with what the app shows the human.
+   On a timer: `scripts/seatbelt-watch.ts` (self-throttling; alerts only inside
+   the window before a real kickoff, deduped per wave) installed by
+   `scripts/seatbelt-agent.sh up` as a launchd agent.
 
 ## Roadmap
 
-9. **In-season loop**: waiver evaluator + FAAB sizing, start/sit, Sunday inactives
-   seatbelt.
-10. **Write automation** (FA sniping, lineup fixes) after a trust ramp. Realtime
+10. **In-season loop**: waiver evaluator + FAAB sizing. Start/sit and the Sunday
+    inactives seatbelt are done (`ff seatbelt`); what is missing is the add side —
+    scoring the free-agent pool against our roster holes and sizing a FAAB bid.
+11. **Write automation** (FA sniping, lineup fixes) after a trust ramp. Realtime
     findings: Sleeper is Phoenix; the data socket is
     `wss://gateway.sleeper.com/socket/websocket` with topics `draft:<id>`,
     `league:<id>`, `user:<id>`, `score:nfl`, and it needs the app session token as
