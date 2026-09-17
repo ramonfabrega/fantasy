@@ -157,6 +157,34 @@ The agent notifies macOS and, if `FF_SEATBELT_HOOK` is set, pipes the same line
 into whatever command you name — that is the phone path. Check on it with
 `scripts/seatbelt-agent.sh status`, remove it with `down`.
 
+### 8. Every waiver run (Tue/Wed, before the Wednesday clear)
+
+```sh
+bun ff waivers                   # is there an add worth making, and what to bid?
+bun ff waivers --pos RB          # ...or just one position
+```
+
+`ff waivers` scores every available player against *our* roster and quotes each
+one as a pair — add X, drop Y — because an add is worth exactly what it beats on
+a full roster. **`HOLD` is the normal answer and is a real finding**: in week 2 it
+read a pool of 417 and recommended nothing, which is the correct call when the
+worst man on our roster is still better than the best man available.
+
+Two traps it exists to avoid, both of which caught the first draft of it:
+
+- **Ranking on this week's projection.** A weekly number is a matchup, and you
+  cannot add a matchup — you add the player and keep him. Gains are season-long;
+  `wk` is printed as colour only.
+- **Ranking players instead of rosters.** The board floors a player at half his
+  over-waiver value so bench RB/WR aren't zeroed out, but that floor is a lie for
+  a one-slot, non-flex position: a second DEF or K can never enter the lineup. So
+  the gain is the change in the *startable* roster, which prices those at zero.
+
+FAAB sizing comes from the league's own budget and the weeks left before the
+playoffs (one week's fair share is `left / weeks_left`, and a roster-changing add
+is worth several), with the winning bids actually paid in this league printed
+alongside as `market_bids`. Nothing is calibrated to $100 or to 12 teams.
+
 ## Stack
 
 Bun + TypeScript + [incur](https://github.com/wevm/incur) (agent-first CLI framework;
@@ -168,7 +196,8 @@ Prefer Bun natives (`Bun.file`, `bun:sqlite`, `Bun.serve`) over npm equivalents.
 `bun ff <cmd>` (or `bun src/ff.ts <cmd>`): `state`, `league`, `members`, `roster
 [owner]`, `draft`, `picks`, `trending [add|drop]`, `player <query>`, `matchups
 [week]`, `scout [--league id]`, `study`, `value`, `odds`, `meta crawl|study|adp`,
-`profile`, `board`, `mock`, `live [--serve port] [--draft id]`, `seatbelt`. All read-only.
+`profile`, `board`, `mock`, `live [--serve port] [--draft id]`, `seatbelt`, `waivers`.
+All read-only.
 Post-draft league report: `scripts/report/` (`postdraft.ts` then `build_report.py`).
 Sleeper (`api.sleeper.app/v1`) needs no auth; only `odds` needs a key. Player DB
 (~5MB) caches to `.cache/players.json` for 24h — Sleeper asks max 1 fetch/day;
@@ -221,11 +250,16 @@ which is worse than failing.
    the window before a real kickoff, deduped per wave) installed by
    `scripts/seatbelt-agent.sh up` as a launchd agent.
 
+10. ✅ **Waiver evaluator** (`ff waivers`) — the add side of the in-season loop.
+    Scores the whole available pool against our roster as add/drop *pairs*, on
+    season value rather than the week, and sizes a FAAB bid from the league's own
+    budget, the weeks left, and the winning bids actually paid here. Gains are the
+    change in the **startable** roster, not the gap between two board values —
+    that is what stops it recommending a backup DEF (pinned in `waivers.test.ts`).
+    `HOLD` is the common and correct verdict.
+
 ## Roadmap
 
-10. **In-season loop**: waiver evaluator + FAAB sizing. Start/sit and the Sunday
-    inactives seatbelt are done (`ff seatbelt`); what is missing is the add side —
-    scoring the free-agent pool against our roster holes and sizing a FAAB bid.
 11. **Write automation** (FA sniping, lineup fixes) after a trust ramp. Realtime
     findings: Sleeper is Phoenix; the data socket is
     `wss://gateway.sleeper.com/socket/websocket` with topics `draft:<id>`,

@@ -18,6 +18,7 @@ import { buildBoard, flag } from './proj'
 import { draftState, serveLive } from './draft'
 import { mockDraft } from './mock'
 import { seatbelt } from './lineup'
+import { waivers } from './waivers'
 
 const FANTASY_POS = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
 
@@ -309,6 +310,25 @@ cli.command('seatbelt', {
     if (options.full) return s
     const { starters, bench, ...rest } = s
     return rest
+  },
+})
+
+cli.command('waivers', {
+  description:
+    'Score the available pool against our roster holes on SEASON value, paired with the drop it costs, and size a FAAB bid',
+  options: z.object({
+    week: z.coerce.number().optional().describe('NFL week (default: current)'),
+    owner: z.string().optional().describe('Team to improve (default: ours)'),
+    pos: z.string().optional().describe('Only consider this position'),
+    limit: z.coerce.number().optional().describe('How many candidates to return (default 10)'),
+  }),
+  async run({ options }) {
+    return waivers({
+      week: options.week,
+      owner: options.owner,
+      pos: options.pos,
+      limit: options.limit,
+    })
   },
 })
 

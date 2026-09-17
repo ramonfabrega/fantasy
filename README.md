@@ -147,6 +147,12 @@ heuristic tuned on 12-team half-PPR. Those are opinions, not league rules.
 | `ff mock [--sims 300]` | play the rest of the draft N times → pick plan with availability odds per pick |
 | `ff live [--serve 4242] [--draft <id>]` | on-the-clock state, your roster, best available for *your* next pick. `--serve` adds a page plus the `/ws` agent feed; `--draft` points it at any draft id, e.g. a mock, to rehearse |
 
+**In-season**
+| | |
+| --- | --- |
+| `ff seatbelt [--week n] [--full]` | the gameday check: starters who are Out/inactive in games that haven't locked, plus any bench upgrade, plus the click-list to fix it. `ACT` = a real mistake is on the board |
+| `ff waivers [--pos RB] [--limit n]` | score the whole available pool against *your* roster holes on season value, paired with the drop it costs, and size a FAAB bid. `HOLD` is a normal answer |
+
 Every command takes `--json` / `--format yaml\|md\|jsonl`, and `ff --mcp` serves
 the whole CLI as an MCP server.
 
