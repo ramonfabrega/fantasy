@@ -180,10 +180,21 @@ Two traps it exists to avoid, both of which caught the first draft of it:
   a one-slot, non-flex position: a second DEF or K can never enter the lineup. So
   the gain is the change in the *startable* roster, which prices those at zero.
 
+Two more that week 4 caught. Sleeper lists an IR-slotted player inside `players`,
+so a naive count sees a full roster and quotes a drop for every add; the IR/taxi
+occupants are excluded, and when an active spot is really open the quote is an
+add-only (`drop: null`). Anyone still on the active roster who qualifies for IR is
+listed as `slots.ir_eligible` — reported, never assumed moved, because until the
+human clicks it the spot is not open. And a drop may never leave a starting
+position without a clean-status man: it once offered up our backup QB while the
+starter was Questionable.
+
 FAAB sizing comes from the league's own budget and the weeks left before the
 playoffs (one week's fair share is `left / weeks_left`, and a roster-changing add
 is worth several), with the winning bids actually paid in this league printed
-alongside as `market_bids`. Nothing is calibrated to $100 or to 12 teams.
+alongside as `market_bids`. Nothing is calibrated to $100 or to 12 teams. A
+`bid` only matters while the player is on waivers; once he has cleared he is a $0
+first-come add, and the output says so rather than guessing the clock.
 
 ## Stack
 
@@ -256,7 +267,9 @@ which is worse than failing.
     budget, the weeks left, and the winning bids actually paid here. Gains are the
     change in the **startable** roster, not the gap between two board values —
     that is what stops it recommending a backup DEF (pinned in `waivers.test.ts`).
-    `HOLD` is the common and correct verdict.
+    It sees the IR slot (reserved players hold no active spot, so an open spot
+    quotes add-only) and never proposes dropping the last clean-status man at a
+    starting position. `HOLD` is the common and correct verdict.
 
 ## Roadmap
 

@@ -21,6 +21,17 @@
 //      weekly allowance. The verdict is allowed to be HOLD, and most weeks
 //      should be.
 //
+// And two things it learned the hard way, in week 4 of 2026:
+//
+//   4. **The IR slot is not a roster spot.** Sleeper keeps a player parked on
+//      `reserve` inside `players`, so a naive count sees a full roster and
+//      quotes a drop for every add. Reserved players are excluded from the
+//      holdings, and when an active slot is genuinely open the quote is an
+//      add-only (`drop: null`) — there is nothing to beat.
+//   5. **The drop side is not injury-blind.** It once proposed cutting our
+//      backup QB while the starter was Questionable. A drop may never leave a
+//      starting position without a man whose status is clean.
+//
 // Shape, budget and scoring all come from the league object. Nothing here is
 // calibrated to 12 teams or to $100 — a fork's league gets its own numbers.
 import {
@@ -42,6 +53,37 @@ import { buildBoard, type ProjRow } from './proj'
 const MARGIN = 6
 /** Statuses that make a player un-addable for this week's purposes. */
 const DEAD = new Set(['IR', 'PUP', 'Sus', 'NA', 'DNR', 'Out'])
+/**
+ * Statuses that do not count as "a man who will play this week" when deciding
+ * whether a drop strands a position. Questionable is in here on purpose: a Q
+ * starter is exactly when the backup is not expendable.
+ */
+export const NOT_RELIABLE = new Set([
+  'Questionable',
+  'Doubtful',
+  'Out',
+  'IR',
+  'PUP',
+  'Sus',
+  'NA',
+  'DNR',
+  'COV',
+])
+/** Roster-position entries that are not active roster spots. */
+const INACTIVE_SLOTS = new Set(['IR', 'TAXI'])
+/**
+ * Official designations Sleeper's IR slot always takes. Everything else is
+ * opt-in per league via `settings.reserve_allow_<x>`.
+ */
+const RESERVE_ALWAYS = ['IR', 'PUP']
+const RESERVE_OPTIN: Record<string, string> = {
+  reserve_allow_out: 'Out',
+  reserve_allow_doubtful: 'Doubtful',
+  reserve_allow_sus: 'Sus',
+  reserve_allow_na: 'NA',
+  reserve_allow_dnr: 'DNR',
+  reserve_allow_cov: 'COV',
+}
 
 const num = (n: number) => Math.round(n * 10) / 10
 
@@ -55,11 +97,14 @@ export type Candidate = {
   /** This week's projection, as colour only. Never the ranking signal. */
   wk: number | null
   inj: string
-  /** Dropped by another team this season — so probably still on waivers. */
+  /**
+   * Last week another team dropped him this season. A fact, not a waiver
+   * status: whether he is still on waivers depends on the clock (see `note`).
+   */
   dropped_wk: number | null
-  /** Who comes off our roster to make room. */
-  drop: string
-  drop_val: number
+  /** Who comes off our roster to make room — null when an active slot is open. */
+  drop: string | null
+  drop_val: number | null
   /**
    * Season value the add/drop pair adds to the roster we can actually field —
    * not the gap between the two players' board values. This is the whole point.
@@ -102,6 +147,86 @@ export function canFieldLineup(pos: string[], shape: Shape): boolean {
     have[p] = (have[p] ?? 0) - take
   }
   return flex === 0
+}
+
+const clean = (h: Holding) => !NOT_RELIABLE.has(h.inj)
+
+/**
+ * Does dropping `drop` (with `after` being the roster once the move is made,
+ * candidate included) still leave its position a man who will play?
+ *
+ * `canFieldLineup` answers the legal question; this answers the practical one.
+ * A drop is rejected when it leaves a starting position with zero clean-status
+ * holdings, or with fewer clean holdings than that position has slots when the
+ * roster had at least that many before. Non-starting positions (none in most
+ * leagues) are never constrained.
+ */
+export function keepsHealthyStarters(
+  before: Holding[],
+  after: Holding[],
+  drop: Holding,
+  shape: Shape,
+): boolean {
+  const need = shape.starters[drop.pos] ?? 0
+  if (!need) return true
+  const n = (ps: Holding[]) => ps.filter((p) => p.pos === drop.pos && clean(p)).length
+  const post = n(after)
+  if (post === 0) return false
+  return post >= Math.min(need, n(before))
+}
+
+/** Active roster spots: every `roster_positions` entry except IR and TAXI. */
+export function activeCapacity(rosterPositions: string[]): number {
+  return rosterPositions.filter((s) => !INACTIVE_SLOTS.has(s)).length
+}
+
+/** Injury designations this league's IR slot accepts, read from its settings. */
+export function reserveEligible(settings: Record<string, any> = {}): Set<string> {
+  const ok = new Set(RESERVE_ALWAYS)
+  for (const [k, st] of Object.entries(RESERVE_OPTIN)) if (settings[k]) ok.add(st)
+  return ok
+}
+
+/**
+ * Split a Sleeper roster into the ids that occupy active spots and the ids
+ * parked in IR/taxi. Sleeper lists reserve and taxi players inside `players`
+ * too, which is how the first version of this counted a 14-man active roster
+ * as full.
+ */
+export function splitRoster(r: { players?: string[]; reserve?: string[] | null; taxi?: string[] | null }) {
+  const parked = new Set([...(r.reserve ?? []), ...(r.taxi ?? [])])
+  const all = r.players ?? []
+  return { active: all.filter((p) => !parked.has(p)), parked: all.filter((p) => parked.has(p)) }
+}
+
+export type Move = { drop: Holding | null; gain: number }
+
+/**
+ * Best move for one candidate against the ACTIVE roster.
+ *
+ * With an open active slot the add-only is always on the table and needs no
+ * drop; with none, every drop that leaves a legal, playable lineup is tried
+ * and the one that moves the roster furthest wins. Every drop is tried rather
+ * than assuming the lowest-value player, because the cheapest drop is not
+ * always the best one — swapping like for like at a position we are deep in
+ * can beat cutting the worst man on the roster.
+ *
+ * Add-only and pair gains are compared on the same footing (change in
+ * startable value); the caller applies MARGIN to pairs only, since an add-only
+ * never has to beat a drop it isn't making.
+ */
+export function bestMove(active: Holding[], cand: Holding, shape: Shape, openSlots: number): Move | null {
+  const baseline = rosterValue(active, shape)
+  let best: Move | null = null
+  if (openSlots > 0) best = { drop: null, gain: rosterValue([...active, cand], shape) - baseline }
+  for (const d of active) {
+    const after = [...active.filter((r) => r.id !== d.id), cand]
+    if (!canFieldLineup(after.map((r) => r.pos), shape)) continue
+    if (!keepsHealthyStarters(active, after, d, shape)) continue
+    const gain = rosterValue(after, shape) - baseline
+    if (!best || gain > best.gain) best = { drop: d, gain }
+  }
+  return best
 }
 
 /**
@@ -229,12 +354,18 @@ export async function waivers(
         .catch(() => ({ w, tx: [] as any[] })),
     ),
   )
+  // The last time claims actually processed here, as observed — the only
+  // waiver-clock fact we report, because it is read rather than inferred.
+  let lastRun = 0
   for (const { w, tx } of txAll)
-    for (const t of tx)
-      if (t.status === 'complete') for (const pid of Object.keys(t.drops ?? {})) droppedWk.set(pid, w)
+    for (const t of tx) {
+      if (t.status !== 'complete') continue
+      for (const pid of Object.keys(t.drops ?? {})) droppedWk.set(pid, w)
+      if (t.type === 'waiver') lastRun = Math.max(lastRun, t.status_updated ?? 0)
+    }
 
   // ---------------------------------------------------------------- our side
-  const roster: Holding[] = (mine.players ?? []).map((pid: string) => {
+  const toHolding = (pid: string): Holding => {
     const p: any = (db as any)[pid] ?? {}
     const row = byId.get(pid)
     return {
@@ -247,27 +378,26 @@ export async function waivers(
       pos_rank: row?.pos_rank ?? null,
       inj: injOf(pid),
     }
-  })
+  }
+  // Only the men in active spots compete for the lineup or can be dropped for
+  // room; IR/taxi occupants are listed in `players` too but hold no active spot.
+  const split = splitRoster(mine)
+  const roster: Holding[] = split.active.map(toHolding)
+  const parked: Holding[] = split.parked.map(toHolding)
   const baseline = rosterValue(roster, shape)
 
-  /**
-   * Best add/drop pair for one candidate: try every drop that leaves a legal
-   * lineup and keep the one that moves the roster furthest.
-   *
-   * Every drop is tried rather than assuming the lowest-value player, because
-   * the cheapest drop is not always the best one — swapping like for like at a
-   * position we are deep in can beat cutting the worst man on the roster.
-   */
-  const bestPair = (cand: Holding) => {
-    let best: { drop: Holding; gain: number } | null = null
-    for (const d of roster) {
-      const after = roster.filter((r) => r.id !== d.id)
-      if (!canFieldLineup([...after.map((r) => r.pos), cand.pos], shape)) continue
-      const gain = rosterValue([...after, cand], shape) - baseline
-      if (!best || gain > best.gain) best = { drop: d, gain }
-    }
-    return best
-  }
+  const rp: string[] = league.roster_positions ?? []
+  if (!rp.length) throw new Error('league has no roster_positions — cannot count active roster spots')
+  const capacity = activeCapacity(rp)
+  const openSlots = Math.max(capacity - roster.length, 0)
+
+  // The IR slot: how many exist, who is in them, and who on the active roster
+  // qualifies to move there. Reported, never assumed — moving a man to IR is
+  // the human's click, and until it happens his spot is not open.
+  const reserveSlots: number = league.settings?.reserve_slots ?? 0
+  const reserveUsed = (mine.reserve ?? []).length
+  const eligible = reserveEligible(league.settings)
+  const irEligible = roster.filter((h) => eligible.has(h.inj))
 
   // ------------------------------------------------------------- the pool
   const posFilter = opts.pos?.toUpperCase()
@@ -287,11 +417,13 @@ export async function waivers(
       pos_rank: r.pos_rank,
       inj: injOf(r.id),
     }
-    const pair = bestPair(cand)
-    if (!pair) continue
-    const gain = num(pair.gain)
-    if (gain < MARGIN) continue
-    const d = pair.drop
+    const move = bestMove(roster, cand, shape, openSlots)
+    if (!move) continue
+    const gain = num(move.gain)
+    const d = move.drop
+    // A pair has to clear MARGIN to be worth the churn; an add into an empty
+    // spot only has to be worth something, since it costs no one.
+    if (d ? gain < MARGIN : gain <= 0) continue
     cands.push({
       player: r.player,
       pos: r.pos,
@@ -301,8 +433,8 @@ export async function waivers(
       wk: wkPts(r.id, r.pos),
       inj: injOf(r.id),
       dropped_wk: droppedWk.get(r.id) ?? null,
-      drop: `${d.name} (${d.pos}${d.pos_rank ?? ''}, val ${num(d.val)})`,
-      drop_val: num(d.val),
+      drop: d ? `${d.name} (${d.pos}${d.pos_rank ?? ''}, val ${num(d.val)})` : null,
+      drop_val: d ? num(d.val) : null,
       gain,
       bid: 0, // filled once we know the best gain on the board
       why: '',
@@ -330,8 +462,8 @@ export async function waivers(
     const raw = share * (1 + 3 * rel)
     c.bid = Math.max(1, Math.min(left, Math.round(raw)))
     c.why =
-      `${c.pos}${c.pos_rank} in for ${c.drop} moves the startable roster +${c.gain}` +
-      (c.dropped_wk ? `; dropped in wk ${c.dropped_wk}, so likely still on waivers` : '') +
+      `${c.pos}${c.pos_rank} ${c.drop ? `in for ${c.drop}` : 'into an open active spot (no drop)'} moves the startable roster +${c.gain}` +
+      (c.dropped_wk ? `; dropped by a rival in wk ${c.dropped_wk}` : '') +
       (c.inj ? `; ${c.inj}` : '')
   }
 
@@ -353,9 +485,27 @@ export async function waivers(
     market_bids: market,
     margin: MARGIN,
     roster_value: num(baseline),
+    slots: {
+      active_capacity: capacity,
+      active: roster.length,
+      open: openSlots,
+      reserve_slots: reserveSlots,
+      reserve_used: reserveUsed,
+      reserved: parked.map((h) => `${h.name} (${h.pos}${h.inj ? `, ${h.inj}` : ''})`),
+      ir_eligible: irEligible.map((h) => `${h.name} (${h.pos}, ${h.inj})`),
+    },
     candidates: top,
-    note: top.length
-      ? 'Gain = change in startable SEASON value after the add and the drop. `wk` is colour only, never the ranking signal.'
-      : `No add/drop pair in a pool of ${pool.length} moves the startable roster by ${MARGIN}+ season value. Hold the budget.`,
+    note: [
+      top.length
+        ? 'Gain = change in startable SEASON value after the move (add-only when `drop` is null). `wk` is colour only, never the ranking signal.'
+        : `No move in a pool of ${pool.length} moves the startable roster ${openSlots ? 'at all' : `by ${MARGIN}+ season value`}. Hold the budget.`,
+      'Drops never leave a starting position without a clean-status (not Q/D/O/IR) man, so a backup behind a hurt starter is not offered up.',
+      irEligible.length && reserveUsed < reserveSlots
+        ? `IR slot open and ${irEligible.map((h) => h.name).join(', ')} qualifies — moving him there opens an active spot; re-run after the click.`
+        : '',
+      `\`bid\` is a FAAB claim and applies only while the player is on waivers (claims last processed ${lastRun ? new Date(lastRun).toISOString() : 'never, this season'}). A player who has already cleared is a $0 first-come free-agent add — check his card in Sleeper before spending.`,
+    ]
+      .filter(Boolean)
+      .join(' '),
   }
 }
