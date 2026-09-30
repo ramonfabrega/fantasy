@@ -275,8 +275,8 @@ Everything above is general. Below is the specific league this checkout points a
 
 Half-PPR, 12 teams, $350 buy-in, snake draft (15 rds, autopick on), roster
 1QB/2RB/2WR/1TE/1FLEX/1K/1DEF + 6 BN, FAAB $100 clearing Wed, playoffs top-6 wk 15,
-median match ON (two W/L per week — floor/consistency matters), IR is COVID-only
-(useless), redraft. Eleven opponents, all IRL friends, whose idea of fun is beating
+median match ON (two W/L per week — floor/consistency matters), 1 IR slot that
+takes official NFL IR/PUP designations (plus COV — not Out/Doubtful/Sus), redraft. Eleven opponents, all IRL friends, whose idea of fun is beating
 us. League history: previous_league_id chain → the 2025 season is minable (`ff scout`).
 
 **Pick timer, 2026:** configured 30s → raised to 90s on draft morning → dropped
